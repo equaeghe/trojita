@@ -499,14 +499,14 @@ static void processListOfRecipientsIntoHeader(const QByteArray &prefix, const QL
 
 }
 
-void MessageComposer::writeCommonMessageBeginning(QIODevice *target) const
+void MessageComposer::writeCommonMessageBeginning(QIODevice *target, Common::Section *targetCutOut) const
 {
     // The From header
     target->write(QByteArray("From: ").append(m_from.asMailHeader()).append("\r\n"));
 
     // All recipients
     // Got to group the headers so that both of (To, Cc) are present at most once
-    QList<QByteArray> rcptTo, rcptCc;
+    QList<QByteArray> rcptTo, rcptCc, rcptBcc;
     for (auto it = m_recipients.begin(); it != m_recipients.end(); ++it) {
         switch(it->first) {
         case Composer::ADDRESS_TO:
@@ -516,6 +516,7 @@ void MessageComposer::writeCommonMessageBeginning(QIODevice *target) const
             rcptCc << it->second.asMailHeader();
             break;
         case Composer::ADDRESS_BCC:
+            rcptBcc << it->second.asMailHeader();
             break;
         case Composer::ADDRESS_FROM:
         case Composer::ADDRESS_SENDER:
@@ -530,6 +531,15 @@ void MessageComposer::writeCommonMessageBeginning(QIODevice *target) const
     processListOfRecipientsIntoHeader("To: ", rcptTo, recipientHeaders);
     processListOfRecipientsIntoHeader("Cc: ", rcptCc, recipientHeaders);
     target->write(recipientHeaders);
+    recipientHeaders.clear();
+
+    // Bcc headers should be removed before submission, so we remember where
+    // they have been put. Nothing else may be prepended afterwards!
+    targetCutOut->begin = target->pos();
+    processListOfRecipientsIntoHeader("Bcc: ", rcptBcc, recipientHeaders);
+    target->write(recipientHeaders);
+    recipientHeaders.clear();
+    targetCutOut->end = target->pos();
 
     // Other message metadata
     target->write(encodeHeaderField(QLatin1String("Subject: ") + m_subject) + "\r\n" +
@@ -643,11 +653,11 @@ bool MessageComposer::writeAttachmentBody(QIODevice *target, QString *errorMessa
     return true;
 }
 
-bool MessageComposer::asRawMessage(QIODevice *target, QString *errorMessage) const
+bool MessageComposer::asRawMessage(QIODevice *target, Common::Section *targetCutOut, QString *errorMessage) const
 {
     ensureRandomStrings();
 
-    writeCommonMessageBeginning(target);
+    writeCommonMessageBeginning(target, targetCutOut);
 
     if (!m_attachments.isEmpty()) {
         Q_FOREACH(const AttachmentItem *attachment, m_attachments) {
@@ -671,9 +681,10 @@ bool MessageComposer::asCatenateData(QList<Imap::Mailbox::CatenatePair> &target,
 
     // write the initial data
     {
+        Common::Section cutOutPair;
         QBuffer io(&target.back().second);
         io.open(QIODevice::ReadWrite);
-        writeCommonMessageBeginning(&io);
+        writeCommonMessageBeginning(&io, &cutOutPair);
     }
 
     if (!m_attachments.isEmpty()) {

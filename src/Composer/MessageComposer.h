@@ -26,6 +26,7 @@
 #include <QAbstractListModel>
 #include <QPointer>
 
+#include "Common/Section.h"
 #include "Composer/ContentDisposition.h"
 #include "Composer/Recipients.h"
 #include "Imap/Model/CatenateData.h"
@@ -70,7 +71,7 @@ public:
     void prepareForwarding(const QModelIndex &index, const ForwardMode mode);
 
     bool isReadyForSerialization() const;
-    bool asRawMessage(QIODevice *target, QString *errorMessage) const;
+    bool asRawMessage(QIODevice *target, Common::Section *targetCutOut, QString *errorMessage) const;
     bool asCatenateData(QList<Imap::Mailbox::CatenatePair> &target, QString *errorMessage) const;
 
     QDateTime timestamp() const;
@@ -93,7 +94,7 @@ private:
     static QByteArray encodeHeaderField(const QString &text);
 
     void ensureRandomStrings() const;
-    void writeCommonMessageBeginning(QIODevice *target) const;
+    void writeCommonMessageBeginning(QIODevice *target, Common::Section *targetCutOut) const;
     bool writeAttachmentHeader(QIODevice *target, QString *errorMessage, const AttachmentItem *attachment) const;
     bool writeAttachmentBody(QIODevice *target, QString *errorMessage, const AttachmentItem *attachment) const;
 

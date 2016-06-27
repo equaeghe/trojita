@@ -73,7 +73,7 @@ Submission::Submission(QObject *parent, Imap::Mailbox::Model *model, MSA::MSAFac
     QObject(parent),
     m_appendUidReceived(false), m_appendUidValidity(0), m_appendUid(0), m_genUrlAuthReceived(false),
     m_saveToSentFolder(false), m_useBurl(false), m_useImapSubmit(false), m_state(STATE_INIT),
-    m_msaMaximalProgress(0),
+    m_messageCutOut(qMakePair(0, 0)), m_msaMaximalProgress(0),
     m_composer(0), m_model(model), m_msaFactory(msaFactory),
     m_accountId(accountId),
     m_updateReplyingToMessageFlagsTask(0),
@@ -206,7 +206,7 @@ void Submission::slotMessageDataAvailable()
     QString errorMessage;
     QList<Imap::Mailbox::CatenatePair> catenateable;
 
-    if (shouldBuildMessageLocally() && !m_composer->asRawMessage(&buf, &errorMessage)) {
+    if (shouldBuildMessageLocally() && !m_composer->asRawMessage(&buf, &m_messageCutOut, &errorMessage)) {
         gotError(tr("Cannot send right now -- saving failed:\n %1").arg(errorMessage));
         return;
     }
@@ -284,10 +284,18 @@ void Submission::slotInvokeMsaNow()
         Q_FOREACH(const QByteArray &recipient, m_composer->rawRecipientAddresses()) {
             options.append(qMakePair<QByteArray,QVariant>("RECIPIENT", recipient));
         }
+        // N.B.: when (m_messageCutOut.span != 0) we don't take any
+        // action here as we assume the server takes care if this, given that the RFC draft
+        // says: “The server MUST still sanitize the headers of the submitted message
+        // to guarantee the privacy of the recipients listed in the Bcc message header.”
         msa->sendImap(m_sentFolderName, m_appendUidValidity, m_appendUid, options);
     } else if (m_genUrlAuthReceived && m_useBurl) {
+        // FIXME: deal with (m_messageCutOut.span != 0)
         msa->sendBurl(m_composer->rawFromAddress(), m_composer->rawRecipientAddresses(), m_urlauth.toUtf8());
     } else {
+        if (m_messageCutOut.span != 0)
+            // some part of the message (Bcc or Resent-Bcc) should be cut out before sending
+            m_rawMessageData.remove(m_messageCutOut.begin, m_messageCutOut.span);
         msa->sendMail(m_composer->rawFromAddress(), m_composer->rawRecipientAddresses(), m_rawMessageData);
     }
 }

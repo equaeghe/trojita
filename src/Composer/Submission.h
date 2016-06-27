@@ -25,6 +25,7 @@
 #include <QPersistentModelIndex>
 #include <QPointer>
 
+#include "Common/Section.h"
 #include "Recipients.h"
 
 namespace Imap {
@@ -133,6 +134,7 @@ private:
 
     SubmissionProgress m_state;
     QByteArray m_rawMessageData;
+    Common::Section m_messageCutOut;
     int m_msaMaximalProgress;
 
     MessageComposer *m_composer;
