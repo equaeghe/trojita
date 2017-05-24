@@ -56,6 +56,7 @@ private slots:
     void testBurlSubmission();
     void testBurlSubmissionAttachedWholeMessage();
     void testCatenateBurlWithoutUrlauth();
+    void testCatenateBurlWithoutUrlauth_data();
     void testFailedMsa();
     void testNoImapContinuation();
     void testReplyingNormal();
@@ -69,10 +70,11 @@ private:
     void helperTestSimpleAppend(bool appendOk, bool appendUid, bool shallUpdateReplyingTo, bool replyingToUpdateOk);
     void helperSetupProperHeaders();
     void helperMissingAttachment(bool save, bool burl, bool imap, bool attachingFile);
-    void helperAttachImapPart(const uint uid);
+    void helperAttachImapPart(const int row, const QByteArray mimePart);
     void helperAttachImapMessage(const uint uid);
 
     Composer::Submission *m_submission;
+    std::shared_ptr<Composer::MessageComposer> m_composer;
     MSA::FakeFactory *m_msaFactory;
 
     QSignalSpy *sendingSpy;

@@ -92,6 +92,7 @@ Parser::Parser(QObject *parent, Streams::Socket *socket, const uint myId):
     waitingForConnection(true), waitingForEncryption(socket->isConnectingEncryptedSinceStart()), waitingForSslPolicy(false),
     m_expectsInitialGreeting(true), readingMode(ReadingLine), oldLiteralPosition(0), m_parserId(myId)
 {
+    socket->setParent(this);
     connect(socket, &Streams::Socket::disconnected, this, &Parser::handleDisconnected);
     connect(socket, &Streams::Socket::readyRead, this, &Parser::handleReadyRead);
     connect(socket, &Streams::Socket::stateChanged, this, &Parser::slotSocketStateChanged);
@@ -960,6 +961,7 @@ void Parser::processLine(QByteArray line)
 QSharedPointer<Responses::AbstractResponse> Parser::parseUntagged(const QByteArray &line)
 {
     int pos = 2;
+    LowLevelParser::eatSpaces(line, pos);
     uint number;
     try {
         number = LowLevelParser::getUInt(line, pos);
@@ -1147,7 +1149,6 @@ Parser::~Parser()
     // been already destroyed!
     socket->disconnect(this);
     socket->close();
-    socket->deleteLater();
 }
 
 uint Parser::parserId() const

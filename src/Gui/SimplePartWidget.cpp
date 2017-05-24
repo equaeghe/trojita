@@ -20,6 +20,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include <QApplication>
+#include <QClipboard>
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QMenu>
@@ -30,6 +31,7 @@
 #include "SimplePartWidget.h"
 #include "Common/MetaTypes.h"
 #include "Common/Paths.h"
+#include "Composer/Mailto.h"
 #include "Gui/MessageView.h" // so that the compiler knows that it's a QObject
 #include "Gui/Util.h"
 #include "Imap/Encoders.h"
@@ -81,9 +83,13 @@ SimplePartWidget::SimplePartWidget(QWidget *parent, Imap::Network::MsgPartNetAcc
     this->addAction(m_saveMessage);
 
     m_findAction = new QAction(UiUtils::loadIcon(QStringLiteral("edit-find")), tr("Search..."), this);
-    m_findAction->setShortcut(tr("Ctrl+F"));
     connect(m_findAction, &QAction::triggered, this, &SimplePartWidget::searchDialogRequested);
-    addAction(m_findAction);
+
+    m_copyMail = new QAction(UiUtils::loadIcon(QStringLiteral("edit-copy")), tr("Copy e-mail address"), this);
+    connect(m_copyMail, &QAction::triggered, this, [this](){
+        QGuiApplication::clipboard()->setText(m_copyMail->data().toString());
+    });
+    this->addAction(m_copyMail);
 
     setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -91,7 +97,6 @@ SimplePartWidget::SimplePartWidget(QWidget *parent, Imap::Network::MsgPartNetAcc
     // displaying message source or message headers. Let's silence the QObject::connect warning.
     if (m_messageView) {
         connect(this, &QWidget::customContextMenuRequested, m_messageView, &MessageView::partContextMenuRequested);
-        connect(this, &SimplePartWidget::searchDialogRequested, m_messageView, &MessageView::triggerSearchDialog);
         // The targets expect the sender() of the signal to be a SimplePartWidget, not a QWebPage,
         // which means we have to do this indirection
         connect(page(), &QWebPage::linkHovered, this, &SimplePartWidget::linkHovered);
@@ -161,6 +166,12 @@ void SimplePartWidget::zoomOriginal()
     constrainSize();
 }
 
+bool SimplePartWidget::searchDialogRequested()
+{
+    m_messageView->triggerSearchDialogBy(this);
+    return true;
+}
+
 void SimplePartWidget::buildContextMenu(const QPoint &point, QMenu &menu) const
 {
     menu.addAction(m_findAction);
@@ -170,10 +181,17 @@ void SimplePartWidget::buildContextMenu(const QPoint &point, QMenu &menu) const
     a = pageAction(QWebPage::SelectAll);
     a->setIcon(UiUtils::loadIcon(QStringLiteral("edit-select-all")));
     menu.addAction(a);
-    if (!page()->mainFrame()->hitTestContent(point).linkUrl().isEmpty()) {
+    auto linkUrl = page()->mainFrame()->hitTestContent(point).linkUrl();
+    if (!linkUrl.isEmpty()) {
         menu.addSeparator();
-        a = pageAction(QWebPage::CopyLinkToClipboard);
-        a->setIcon(UiUtils::loadIcon(QStringLiteral("edit-copy")));
+        auto oneMail = Composer::extractOneMailAddress(linkUrl);
+        if (!oneMail.isEmpty()) {
+            a = m_copyMail;
+            a->setData(oneMail);
+        } else {
+            a = pageAction(QWebPage::CopyLinkToClipboard);
+            a->setIcon(UiUtils::loadIcon(QStringLiteral("edit-copy")));
+        }
         menu.addAction(a);
     }
     menu.addSeparator();

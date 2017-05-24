@@ -38,6 +38,9 @@ enum {
     /** @short The item is not available -- perhaps we're offline and it isn't cached */
     RoleIsUnavailable,
 
+    /** @short Are we working in an offline mode? This role only works on a top-level item in a model. */
+    RoleIsNetworkOffline,
+
     /** @short Name of the mailbox */
     RoleMailboxName,
     /** @short Short name of the mailbox */
@@ -145,8 +148,8 @@ enum {
     RolePartContentFormat,
     /** @short The delsp= parameter of the message part's Content-Type */
     RolePartContentDelSp,
-    /** @short Encoding of a message part */
-    RolePartEncoding,
+    /** @short Content-Transfer-Encoding of a message part */
+    RolePartTransferEncoding,
     /** @short The body-fld-id field from BODYSTRUCTURE */
     RolePartBodyFldId,
     /** @short The Content-Disposition of a message part */
@@ -173,6 +176,9 @@ enum {
 
     /** @short QModelIndex of the message a part is associated to */
     RolePartMessageIndex,
+
+    /** @short A relative IMAP URL pointing to this message or part, if available */
+    RoleIMAPRelativeUrl,
 
 
     /** @short Is the format of this particular multipart/signed supported for signature verification?

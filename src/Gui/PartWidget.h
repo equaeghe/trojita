@@ -46,6 +46,7 @@ public:
                                const QModelIndex &partIndex,
                                const int recursionDepth, const UiUtils::PartLoadingOptions options);
     virtual QString quoteMe() const override;
+    virtual bool searchDialogRequested() override;
     virtual void reloadContents() override;
     virtual void zoomIn() override;
     virtual void zoomOut() override;
@@ -81,7 +82,7 @@ public:
                            const UiUtils::PartLoadingOptions loadingOptions);
 
 protected slots:
-    void handleRowsInserted(const QModelIndex &parent, int row, int column);
+    void handleRowsInserted(const QModelIndex &parent, int first, int last);
     void handleLayoutChanged(const QList<QPersistentModelIndex> &parents);
     void handleError(const QModelIndex &parent, const QString &status, const QString &details);
     void handleDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
@@ -109,6 +110,7 @@ public:
                                    const QModelIndex &partIndex, const int recursionDepth,
                                    const UiUtils::PartLoadingOptions loadingOptions);
     virtual QString quoteMe() const override;
+    virtual bool searchDialogRequested() override;
     virtual void reloadContents() override;
     virtual void zoomIn() override;
     virtual void zoomOut() override;
@@ -128,6 +130,7 @@ public:
                            const QModelIndex &partIndex, const int recursionDepth,
                            const UiUtils::PartLoadingOptions loadingOptions);
     virtual QString quoteMe() const override;
+    virtual bool searchDialogRequested() override;
     virtual void reloadContents() override;
     virtual void zoomIn() override;
     virtual void zoomOut() override;
@@ -143,6 +146,7 @@ public:
                      const QModelIndex &partIndex, const int recursionDepth,
                      const UiUtils::PartLoadingOptions loadingOptions);
     virtual QString quoteMe() const override;
+    virtual bool searchDialogRequested() override;
     virtual void reloadContents() override;
     virtual void zoomIn() override;
     virtual void zoomOut() override;

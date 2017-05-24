@@ -26,6 +26,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QVBoxLayout>
+#include "Common/SettingsNames.h"
 #include "Gui/EmbeddedWebView.h"
 #include "Gui/FindBar.h"
 #include "Gui/MessageView.h"
@@ -33,12 +34,13 @@
 
 namespace Gui {
 
-CompleteMessageWidget::CompleteMessageWidget(QWidget *parent, QSettings *settings, Plugins::PluginManager *pluginManager)
+CompleteMessageWidget::CompleteMessageWidget(QWidget *parent, QSettings *settings, Plugins::PluginManager *pluginManager,
+        Imap::Mailbox::FavoriteTagsModel *m_favoriteTags)
     : QWidget(parent)
-    , FindBarMixin(this)
+    , FindBarMixin(this), settings(settings)
 {
     setWindowIcon(UiUtils::loadIcon(QStringLiteral("mail-mark-read")));
-    messageView = new MessageView(this, settings, pluginManager);
+    messageView = new MessageView(this, settings, pluginManager, m_favoriteTags);
     area = new QScrollArea();
     area->setWidget(messageView);
     area->setWidgetResizable(true);
@@ -56,6 +58,13 @@ CompleteMessageWidget::CompleteMessageWidget(QWidget *parent, QSettings *setting
     });
     // because the FindBarMixin is not a QObject, we have to use lambda above, otherwise a cast
     // from FindBarMixin * to QObject * fails
+
+    auto geometry = settings->value(Common::SettingsNames::completeMessageWidgetGeometry);
+    if (geometry.isValid()) {
+        restoreGeometry(geometry.toByteArray());
+    } else {
+        resize(800, 600);
+    }
 }
 
 void CompleteMessageWidget::keyPressEvent(QKeyEvent *ke)
@@ -77,6 +86,11 @@ void CompleteMessageWidget::keyPressEvent(QKeyEvent *ke)
     } else { // noop, but hey.
         QWidget::keyPressEvent(ke);
     }
+}
+
+void CompleteMessageWidget::closeEvent(QCloseEvent *event)
+{
+    settings->setValue(Common::SettingsNames::completeMessageWidgetGeometry, saveGeometry());
 }
 
 }

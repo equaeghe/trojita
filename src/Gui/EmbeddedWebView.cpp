@@ -169,7 +169,7 @@ void EmbeddedWebView::handlePageLoadFinished()
 {
     constrainSize();
 
-    // We've already set in in our constructor, but apparently it isn't enough (Qt 4.8.0 on X11).
+    // We've already set it in our constructor, but apparently it isn't enough (Qt 4.8.0 on X11).
     // Let's do it again here, it works.
     Qt::ScrollBarPolicy policy = isWindow() ? Qt::ScrollBarAsNeeded : Qt::ScrollBarAlwaysOff;
     page()->mainFrame()->setScrollBarPolicy(Qt::Horizontal, policy);
@@ -324,10 +324,25 @@ bool ErrorCheckingPage::extension(Extension extension, const ExtensionOption *op
     ErrorPageExtensionReturn *res = static_cast<ErrorPageExtensionReturn *>(output);
     if (input && res) {
         if (input->url.scheme() == QLatin1String("trojita-imap")) {
-            if (input->domain == QtNetwork && input->error == QNetworkReply::TimeoutError) {
-                res->content = tr("<img src=\"%2\"/><span style=\"font-family: sans-serif; color: gray\">"
-                                  "Uncached data not available when offline</span>")
-                        .arg(Util::resizedImageAsDataUrl(QStringLiteral(":/icons/network-offline.svg"), 32)).toUtf8();
+            QString emblem;
+            if (input->domain == QtNetwork) {
+                switch (input->error) {
+                case QNetworkReply::TimeoutError:
+                    emblem = QStringLiteral("network-disconnect");
+                    break;
+                case QNetworkReply::ContentNotFoundError:
+                    emblem = QStringLiteral("emblem-error");
+                    break;
+                case QNetworkReply::UnknownProxyError:
+                    emblem = QStringLiteral("emblem-error");
+                    break;
+                }
+            }
+            if (!emblem.isNull()) {
+                res->content = QStringLiteral(
+                            "<img src=\"%2\" style=\"vertical-align: middle\"/>"
+                            "<span style=\"font-family: sans-serif; color: gray; margin-left: 0.5em\">%1</span>")
+                        .arg(input->errorString, Util::resizedImageAsDataUrl(QStringLiteral(":/icons/%1.svg").arg(emblem), 32)).toUtf8();
                 return true;
             }
         }

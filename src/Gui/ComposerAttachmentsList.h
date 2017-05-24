@@ -20,6 +20,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <memory>
 #include <QList>
 #include <QListView>
 #include <QUrl>
@@ -34,17 +35,20 @@ class MessageComposer;
     attachement is added to the @see Imap::Mailbox::MessageComposer model.
   */
 
+class QDropEvent;
+
 class ComposerAttachmentsList : public QListView {
     Q_OBJECT
 public:
     explicit ComposerAttachmentsList(QWidget *parent);
-    void setComposer(Composer::MessageComposer *composer);
+    void setComposer(std::shared_ptr<Composer::MessageComposer> composer);
 signals:
     void itemDroppedOut();
 protected:
     void startDrag(Qt::DropActions da);
     void dragEnterEvent(QDragEnterEvent *de);
     void dragLeaveEvent(QDragLeaveEvent *de);
+    void dropEvent(QDropEvent* de);
 public slots:
     void slotRemoveAttachment();
     void slotToggledContentDispositionInline(bool checked);
@@ -54,7 +58,7 @@ public slots:
     void showContextMenu(const QPoint &pos);
 private:
     bool m_dragging, m_dragInside;
-    Composer::MessageComposer *m_composer;
+    std::shared_ptr<Composer::MessageComposer> m_composer;
     QAction *m_actionRemoveAttachment;
     QAction *m_actionSendInline;
     QAction *m_actionRename;

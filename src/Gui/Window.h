@@ -63,6 +63,7 @@ class Model;
 class PrettyMailboxModel;
 class ThreadingMsgListModel;
 class PrettyMsgListModel;
+class FavoriteTagsModel;
 
 }
 }
@@ -100,6 +101,7 @@ public:
     Imap::Mailbox::Model *imapModel() const;
 
     Composer::SenderIdentitiesModel *senderIdentitiesModel() { return m_senderIdentities; }
+    Imap::Mailbox::FavoriteTagsModel *favoriteTagsModel() { return m_favoriteTags; }
     Plugins::PluginManager *pluginManager() { return m_pluginManager; }
     QSettings *settings() const { return m_settings; }
     MSA::MSAFactory *msaFactory();
@@ -144,16 +146,20 @@ private slots:
     void slotReplyList();
     void slotReplyGuess();
     void slotForwardAsAttachment();
+    void slotBounce();
     void slotUpdateMessageActions();
+    void handleTag(const bool checked, const int index);
     void handleMarkAsRead(bool);
     void handleMarkAsDeleted(bool);
     void handleMarkAsFlagged(const bool);
     void handleMarkAsJunk(const bool);
     void handleMarkAsNotJunk(const bool);
+    void slotMoveToArchiveFailed(const QString &error);
+    void handleMoveToArchive();
     void slotNextUnread();
     void slotPreviousUnread();
     void msgListClicked(const QModelIndex &);
-    void msgListDoubleClicked(const QModelIndex &);
+    void openCompleteMessageWidget();
     void slotCreateMailboxBelowCurrent();
     void slotMarkCurrentMailboxRead();
     void slotCreateTopMailbox();
@@ -213,6 +219,8 @@ private slots:
 
     void showStatusMessage(const QString &message);
 
+    void slotFavoriteTagsChanged();
+
 protected:
     void resizeEvent(QResizeEvent *);
 
@@ -244,6 +252,7 @@ private:
     Imap::Mailbox::PrettyMailboxModel *prettyMboxModel;
     Imap::Mailbox::PrettyMsgListModel *prettyMsgListModel;
     Composer::SenderIdentitiesModel *m_senderIdentities;
+    Imap::Mailbox::FavoriteTagsModel *m_favoriteTags;
 
     MailBoxTreeView *mboxTree;
     MessageListWidget *msgListWidget;
@@ -293,6 +302,7 @@ private:
     QAction *m_replyList;
     QAction *m_replyGuess;
     QAction *m_forwardAsAttachment;
+    QAction *m_bounce;
     QAction *expunge;
     QAction *createChildMailbox;
     QAction *createTopMailbox;
@@ -303,11 +313,17 @@ private:
     QAction *aboutTrojita;
     QAction *donateToTrojita;
 
+    QAction *tag1;
+    QAction *tag2;
+    QAction *tag3;
+    QAction *tag4;
+    QAction *tag5;
     QAction *markAsRead;
     QAction *markAsDeleted;
     QAction *markAsFlagged;
     QAction *markAsJunk;
     QAction *markAsNotJunk;
+    QAction *moveToArchive;
     QAction *saveWholeMessage;
     QAction *viewMsgSource;
     QAction *viewMsgHeaders;

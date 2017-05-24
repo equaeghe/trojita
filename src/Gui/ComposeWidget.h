@@ -22,6 +22,8 @@
 #ifndef COMPOSEWIDGET_H
 #define COMPOSEWIDGET_H
 
+#include <memory>
+
 #include <QList>
 #include <QMap>
 #include <QPersistentModelIndex>
@@ -30,7 +32,9 @@
 #include <QWidget>
 
 #include "Composer/Recipients.h"
+#include "Composer/MessageComposer.h"
 #include "Plugins/AddressbookPlugin.h"
+
 
 namespace Ui
 {
@@ -61,6 +65,8 @@ class MainWindow;
 
 class InhibitComposerDirtying;
 
+class ComposerSaveState;
+
 /** @short A "Compose New Mail..." dialog
 
   Implements a widget which can act as a standalone window for composing e-mail messages.
@@ -81,6 +87,7 @@ public:
                                       const QString &body, const QList<QByteArray> &inReplyTo, const QList<QByteArray> &references);
     static ComposeWidget *createForward(MainWindow *mainWindow, const Composer::ForwardMode mode, const QModelIndex &forwardingMessage,
                                         const QString &subject, const QList<QByteArray> &inReplyTo, const QList<QByteArray> &references);
+    static ComposeWidget *createFromReadOnly(MainWindow *mainWindow, const QModelIndex &messageRoot, const QList<QPair<Composer::RecipientKind, QString>> &recipients);
     void placeOnMainWindow();
 protected:
     void changeEvent(QEvent *e);
@@ -97,6 +104,7 @@ private slots:
     void sent();
     void updateRecipientList();
     void scrollRecipients(int);
+    void gotoNextInputLineFrom(QWidget *w);
     void handleFocusChange();
     void scrollToFocus();
     void slotFadeFinished();
@@ -126,7 +134,7 @@ private slots:
     void markReplyModeHandpicked();
 
 private:
-    ComposeWidget(MainWindow *mainWindow, MSA::MSAFactory *msaFactory);
+    ComposeWidget(MainWindow *mainWindow, std::shared_ptr<Composer::AbstractComposer> messageComposer, MSA::MSAFactory *msaFactory);
     void setResponseData(const QList<QPair<Composer::RecipientKind, QString> > &recipients, const QString &subject,
                          const QString &body, const QList<QByteArray> &inReplyTo, const QList<QByteArray> &references,
                          const QModelIndex &replyingToMessage);
@@ -145,6 +153,8 @@ private:
 
     void saveDraft(const QString &path);
     void loadDraft(const QString &path);
+
+    std::shared_ptr<Composer::MessageComposer> interactiveComposer();
 
     Ui::ComposeWidget *ui;
     QPushButton *sendButton;
@@ -168,21 +178,14 @@ private:
     int m_maxVisibleRecipients;
 
     bool m_sentMail;
-    /** @short Has it been updated since the last time we auto-saved it? */
-    bool m_messageUpdated;
-    /** @short Was this message ever editted by human?
-
-    We have to track both of these. Simply changing the sender (and hence the signature) without any text being written
-    shall not trigger automatic saving, but on the other hand changing the sender after something was already written
-    is an important change.
-    */
-    bool m_messageEverEdited;
     bool m_explicitDraft;
     QString m_autoSavePath;
 
     QList<QByteArray> m_inReplyTo;
     QList<QByteArray> m_references;
     QPersistentModelIndex m_replyingToMessage;
+
+    std::unique_ptr<ComposerSaveState> m_saveState;
 
     bool m_appendUidReceived;
     uint m_appendUidValidity;
@@ -193,6 +196,7 @@ private:
     MainWindow *m_mainWindow;
     QSettings *m_settings;
 
+    std::shared_ptr<Composer::AbstractComposer> m_composer;
     Composer::Submission *m_submission;
 
     QMenu *m_completionPopup;
@@ -203,6 +207,7 @@ private:
     QMap<QLineEdit *, Plugins::AddressbookJob *> m_secondCompletionRequests;
 
     friend class InhibitComposerDirtying;
+    friend class ComposerSaveState;
 
     ComposeWidget(const ComposeWidget &); // don't implement
     ComposeWidget &operator=(const ComposeWidget &); // don't implement

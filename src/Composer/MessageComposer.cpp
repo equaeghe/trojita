@@ -1,4 +1,4 @@
-/* Copyright (C) 2006 - 2014 Jan Kundrát <jkt@flaska.net>
+/* Copyright (C) 2006 - 2017 Jan Kundrát <jkt@kde.org>
 
    This file is part of the Trojita Qt IMAP e-mail client,
    http://trojita.flaska.net/
@@ -29,21 +29,26 @@
 #include "Common/Application.h"
 #include "Composer/ComposerAttachments.h"
 #include "Imap/Encoders.h"
+#include "Imap/Model/DragAndDrop.h"
 #include "Imap/Model/ItemRoles.h"
 #include "Imap/Model/Model.h"
 #include "Imap/Model/Utils.h"
 #include "UiUtils/IconLoader.h"
 
-namespace {
-    static QString xTrojitaAttachmentList = QStringLiteral("application/x-trojita-attachments-list");
-    static QString xTrojitaMessageList = QStringLiteral("application/x-trojita-message-list");
-    static QString xTrojitaImapPart = QStringLiteral("application/x-trojita-imap-part");
-}
+#define CHECK_STREAM_OK_AT_END(STREAM) \
+    if (!STREAM.atEnd()) { \
+        qDebug() << "drag-and-drop: cannot decode data: too much data"; \
+        return false; \
+    } \
+    if (STREAM.status() != QDataStream::Ok) { \
+        qDebug() << "drag-and-drop: cannot decode data: stream error" << STREAM.status(); \
+        return false; \
+    }
 
 namespace Composer {
 
-MessageComposer::MessageComposer(Imap::Mailbox::Model *model, QObject *parent) :
-    QAbstractListModel(parent), m_model(model), m_shouldPreload(false), m_reportTrojitaVersions(true)
+MessageComposer::MessageComposer(Imap::Mailbox::Model *model) :
+    QAbstractListModel(nullptr), m_model(model), m_shouldPreload(false), m_reportTrojitaVersions(true)
 {
 }
 
@@ -123,7 +128,7 @@ QMimeData *MessageComposer::mimeData(const QModelIndexList &indexes) const
         attachment->asDroppableMimeData(stream);
     }
     QMimeData *res = new QMimeData();
-    res->setData(xTrojitaAttachmentList, encodedData);
+    res->setData(Imap::MimeTypes::xTrojitaAttachmentList, encodedData);
     return res;
 }
 
@@ -143,16 +148,16 @@ bool MessageComposer::dropMimeData(const QMimeData *data, Qt::DropAction action,
     // FIXME: would be cool to support attachment reshuffling and to respect the desired drop position
 
 
-    if (data->hasFormat(xTrojitaAttachmentList)) {
-        QByteArray encodedData = data->data(xTrojitaAttachmentList);
+    if (data->hasFormat(Imap::MimeTypes::xTrojitaAttachmentList)) {
+        QByteArray encodedData = data->data(Imap::MimeTypes::xTrojitaAttachmentList);
         QDataStream stream(&encodedData, QIODevice::ReadOnly);
         return dropAttachmentList(stream);
-    } else if (data->hasFormat(xTrojitaMessageList)) {
-        QByteArray encodedData = data->data(xTrojitaMessageList);
+    } else if (data->hasFormat(Imap::MimeTypes::xTrojitaMessageList)) {
+        QByteArray encodedData = data->data(Imap::MimeTypes::xTrojitaMessageList);
         QDataStream stream(&encodedData, QIODevice::ReadOnly);
         return dropImapMessage(stream);
-    } else if (data->hasFormat(xTrojitaImapPart)) {
-        QByteArray encodedData = data->data(xTrojitaImapPart);
+    } else if (data->hasFormat(Imap::MimeTypes::xTrojitaImapPart)) {
+        QByteArray encodedData = data->data(Imap::MimeTypes::xTrojitaImapPart);
         QDataStream stream(&encodedData, QIODevice::ReadOnly);
         return dropImapPart(stream);
     } else if (data->hasUrls()) {
@@ -260,6 +265,8 @@ bool MessageComposer::dropAttachmentList(QDataStream &stream)
         }
     }
 
+    CHECK_STREAM_OK_AT_END(stream)
+
     beginInsertRows(QModelIndex(), m_attachments.size(), m_attachments.size() + items.d.size() - 1);
     Q_FOREACH(AttachmentItem *attachment, items.d) {
         if (m_shouldPreload)
@@ -312,10 +319,8 @@ bool MessageComposer::dropImapMessage(QDataStream &stream)
     stream >> mailbox >> uidValidity >> uids;
     if (!validateDropImapMessage(stream, mailbox, uidValidity, uids))
         return false;
-    if (!stream.atEnd()) {
-        qDebug() << "drag-and-drop: cannot decode data: too much data";
-        return false;
-    }
+
+    CHECK_STREAM_OK_AT_END(stream)
 
     WillDeleteAll<QList<AttachmentItem*>> items;
     Q_FOREACH(const uint uid, uids) {
@@ -373,10 +378,8 @@ bool MessageComposer::dropImapPart(QDataStream &stream)
     QByteArray trojitaPath;
     if (!validateDropImapPart(stream, mailbox, uidValidity, uid, trojitaPath))
         return false;
-    if (!stream.atEnd()) {
-        qDebug() << "drag-and-drop: cannot decode data: too much data";
-        return false;
-    }
+
+    CHECK_STREAM_OK_AT_END(stream)
 
     AttachmentItem *item;
     try {
@@ -396,7 +399,7 @@ bool MessageComposer::dropImapPart(QDataStream &stream)
 
 QStringList MessageComposer::mimeTypes() const
 {
-    return QStringList() << xTrojitaMessageList << xTrojitaImapPart << xTrojitaAttachmentList << QStringLiteral("text/uri-list");
+    return QStringList() << Imap::MimeTypes::xTrojitaMessageList << Imap::MimeTypes::xTrojitaImapPart << Imap::MimeTypes::xTrojitaAttachmentList << QStringLiteral("text/uri-list");
 }
 
 void MessageComposer::setFrom(const Imap::Message::MailAddress &from)
@@ -460,11 +463,7 @@ bool MessageComposer::isReadyForSerialization() const
 void MessageComposer::ensureRandomStrings() const
 {
     if (m_messageId.isNull()) {
-        auto domain = m_from.host.toUtf8();
-        if (domain.isEmpty()) {
-            domain = QByteArrayLiteral("localhost");
-        }
-        m_messageId = QUuid::createUuid().toByteArray().replace("{", "").replace("}", "") + "@" + domain;
+        m_messageId = AbstractComposer::generateMessageId(m_from);
     }
 
     if (m_mimeBoundary.isNull()) {
@@ -521,6 +520,11 @@ void MessageComposer::writeCommonMessageBeginning(QIODevice *target, Common::Sec
         case Composer::ADDRESS_FROM:
         case Composer::ADDRESS_SENDER:
         case Composer::ADDRESS_REPLY_TO:
+        case Composer::ADDRESS_RESENT_FROM:
+        case Composer::ADDRESS_RESENT_SENDER:
+        case Composer::ADDRESS_RESENT_TO:
+        case Composer::ADDRESS_RESENT_CC:
+        case Composer::ADDRESS_RESENT_BCC:
             // These should never ever be produced by Trojita for now
             Q_ASSERT(false);
             break;
@@ -610,18 +614,20 @@ bool MessageComposer::writeAttachmentHeader(QIODevice *target, QString *errorMes
     target->write(attachment->contentDispositionHeader());
 
     switch (attachment->suggestedCTE()) {
-    case AttachmentItem::CTE_BASE64:
+    case AttachmentItem::ContentTransferEncoding::Base64:
         target->write("Content-Transfer-Encoding: base64\r\n");
         break;
-    case AttachmentItem::CTE_7BIT:
+    case AttachmentItem::ContentTransferEncoding::SevenBit:
         target->write("Content-Transfer-Encoding: 7bit\r\n");
         break;
-    case AttachmentItem::CTE_8BIT:
+    case AttachmentItem::ContentTransferEncoding::EightBit:
         target->write("Content-Transfer-Encoding: 8bit\r\n");
         break;
-    case AttachmentItem::CTE_BINARY:
+    case AttachmentItem::ContentTransferEncoding::Binary:
         target->write("Content-Transfer-Encoding: binary\r\n");
         break;
+    case AttachmentItem::ContentTransferEncoding::QuotedPrintable:
+        target->write("Content-Transfer-Encoding: quoted-printable\r\n");
     }
 
     target->write("\r\n");
@@ -641,13 +647,19 @@ bool MessageComposer::writeAttachmentBody(QIODevice *target, QString *errorMessa
     }
     while (!io->atEnd()) {
         switch (attachment->suggestedCTE()) {
-        case AttachmentItem::CTE_BASE64:
+        case AttachmentItem::ContentTransferEncoding::Base64:
             // Base64 maps 6bit chunks into a single byte. Output shall have no more than 76 characters per line
             // (not counting the CRLF pair).
             target->write(io->read(76*6/8).toBase64() + "\r\n");
             break;
-        default:
+        case AttachmentItem::ContentTransferEncoding::QuotedPrintable:
+            target->write(Imap::quotedPrintableEncode(io->readAll()));
+            break;
+        case AttachmentItem::ContentTransferEncoding::SevenBit:
+        case AttachmentItem::ContentTransferEncoding::EightBit:
+        case AttachmentItem::ContentTransferEncoding::Binary:
             target->write(io->readAll());
+            break;
         }
     }
     return true;

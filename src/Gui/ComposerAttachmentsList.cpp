@@ -25,9 +25,12 @@
 #include <QDebug>
 #include <QInputDialog>
 #include <QMenu>
+#include <QMimeData>
 #include "Composer/MessageComposer.h"
 #include "Gui/ComposerAttachmentsList.h"
+#include "Gui/Util.h"
 #include "Imap/Model/ItemRoles.h"
+#include "Imap/Model/DragAndDrop.h"
 #include "UiUtils/IconLoader.h"
 
 ComposerAttachmentsList::ComposerAttachmentsList(QWidget *parent):
@@ -60,13 +63,13 @@ ComposerAttachmentsList::ComposerAttachmentsList(QWidget *parent):
     connect(this, &QAbstractItemView::activated, this, &ComposerAttachmentsList::onCurrentChanged);
 }
 
-void ComposerAttachmentsList::setComposer(Composer::MessageComposer *composer)
+void ComposerAttachmentsList::setComposer(std::shared_ptr<Composer::MessageComposer> composer)
 {
     // prevent double connections etc
     Q_ASSERT(!m_composer);
 
     m_composer = composer;
-    setModel(m_composer);
+    setModel(m_composer.get());
     connect(model(), &QAbstractItemModel::rowsRemoved, this, &ComposerAttachmentsList::onAttachmentNumberChanged);
     connect(model(), &QAbstractItemModel::rowsInserted, this, &ComposerAttachmentsList::onAttachmentNumberChanged);
     connect(model(), &QAbstractItemModel::layoutChanged, this, &ComposerAttachmentsList::onAttachmentNumberChanged);
@@ -92,6 +95,10 @@ void ComposerAttachmentsList::startDrag(Qt::DropActions da)
 
 void ComposerAttachmentsList::dragEnterEvent(QDragEnterEvent *de)
 {
+    if (Gui::Util::isFromDistinctImapAccount(de)) {
+        de->ignore();
+        return;
+    }
     if (m_dragging)
         m_dragInside = true;
     QListView::dragEnterEvent(de);
@@ -102,6 +109,15 @@ void ComposerAttachmentsList::dragLeaveEvent(QDragLeaveEvent *de)
     if (m_dragging)
         m_dragInside = false;
     QListView::dragLeaveEvent(de);
+}
+
+void ComposerAttachmentsList::dropEvent(QDropEvent* de)
+{
+    if (Gui::Util::isFromDistinctImapAccount(de)) {
+        de->ignore();
+        return;
+    }
+    QListView::dropEvent(de);
 }
 
 void ComposerAttachmentsList::slotRemoveAttachment()
@@ -156,7 +172,8 @@ void ComposerAttachmentsList::onCurrentChanged()
 
 void ComposerAttachmentsList::showContextMenu(const QPoint &pos)
 {
-    // Sometimes currentChanged() is not enough -- we really want to to have these actions to reflect the current selection, if any
+    // Sometimes currentChanged() is not enough -- we really want to have these actions to reflect the current selection, if any
     onAttachmentNumberChanged();
     QMenu::exec(actions(), mapToGlobal(pos), 0, this);
 }
+

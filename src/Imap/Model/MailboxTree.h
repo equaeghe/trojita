@@ -55,6 +55,7 @@ class TreeItem
     friend class MsgListModel; // for direct access to m_children
     friend class ThreadingMsgListModel; // for direct access to m_children
     friend class UpdateFlagsOfAllMessagesTask; // for direct access to m_children
+    friend class FetchMsgPartTask; // for direct access to m_children
 
 protected:
     /** @short Availability of an item */
@@ -140,6 +141,7 @@ class TreeItemMailbox: public TreeItem
     friend class DeleteMailboxTask; // for direct access to maintainingTask
     friend class KeepMailboxOpenTask; // needs access to maintainingTask
     friend class SubscribeUnsubscribeTask; // needs access to m_metadata.flags
+    friend class FetchMsgPartTask; // needs access to partIdToPtr()
     static QLatin1String flagNoInferiors;
     static QLatin1String flagHasNoChildren;
     static QLatin1String flagHasChildren;
@@ -343,11 +345,12 @@ class TreeItemPart: public TreeItem
     void operator=(const TreeItem &);  // don't implement
     friend class TreeItemMailbox; // needs access to m_data
     friend class Model; // dtto
+    friend class FetchMsgPartTask; // needs m_binaryCTEFailed
     QByteArray m_mimeType;
     QByteArray m_charset;
     QByteArray m_contentFormat;
     QByteArray m_delSp;
-    QByteArray m_encoding;
+    QByteArray m_transferEncoding;
     QByteArray m_data;
     QByteArray m_bodyFldId;
     QByteArray m_bodyDisposition;
@@ -357,6 +360,7 @@ class TreeItemPart: public TreeItem
     Imap::Message::AbstractMessage::bodyFldParam_t m_bodyFldParam;
     mutable TreeItemPart *m_partMime;
     mutable TreeItemPart *m_partRaw;
+    bool m_binaryCTEFailed;
 public:
     TreeItemPart(TreeItem *parent, const QByteArray &mimeType);
     ~TreeItemPart();
@@ -399,8 +403,8 @@ public:
     void setCharset(const QByteArray &ch) { m_charset = ch; }
     void setContentFormat(const QByteArray &format) { m_contentFormat = format; }
     void setContentDelSp(const QByteArray &delSp) { m_delSp = delSp; }
-    void setEncoding(const QByteArray &encoding) { m_encoding = encoding; }
-    QByteArray encoding() const { return m_encoding; }
+    void setTransferEncoding(const QByteArray &transferEncoding) { m_transferEncoding = transferEncoding; }
+    QByteArray transferEncoding() const { return m_transferEncoding; }
     void setBodyFldId(const QByteArray &id) { m_bodyFldId = id; }
     QByteArray bodyFldId() const { return m_bodyFldId; }
     void setBodyDisposition(const QByteArray &disposition) { m_bodyDisposition = disposition; }
@@ -449,8 +453,8 @@ private:
 class TreeItemPartMultipartMessage: public TreeItemPart
 {
     Message::Envelope m_envelope;
-    mutable TreeItemPart *m_partHeader;
-    mutable TreeItemPart *m_partText;
+    mutable std::unique_ptr<TreeItemPart> m_partHeader;
+    mutable std::unique_ptr<TreeItemPart> m_partText;
 public:
     TreeItemPartMultipartMessage(TreeItem *parent, const Message::Envelope &envelope);
     virtual ~TreeItemPartMultipartMessage();

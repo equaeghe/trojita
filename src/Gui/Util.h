@@ -46,6 +46,11 @@ int askForSomethingUnlessTold(const QString &title, const QString &message, cons
 
 QString resizedImageAsDataUrl(const QString &fileName, const int extent);
 
+void messageBoxCritical(QWidget *parent, const QString &title, const QString &message);
+void messageBoxWarning(QWidget *parent, const QString &title, const QString &message);
+
+bool isFromDistinctImapAccount(QDropEvent* de);
+
 } // namespace Util
 
 } // namespace Gui

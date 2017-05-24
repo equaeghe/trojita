@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <component type="desktop">
-  <id>trojita.desktop</id>
+  <id>org.kde.trojita.desktop</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0+</project_license>
   <name>Trojitá</name>
@@ -29,8 +29,11 @@
   <name xml:lang="sv">Trojitá</name>
   <name xml:lang="uk">Trojitá</name>
   <name xml:lang="x-test">xxTrojitáxx</name>
+  <name xml:lang="zh-CN">Trojitá</name>
+  <name xml:lang="zh-TW">Trojitá</name>
   <summary>IMAP E-mail Client</summary>
   <summary xml:lang="ar">عميل بريد IMAP إلكترونيّ</summary>
+  <summary xml:lang="ast">Veceru de corréu IMAP</summary>
   <summary xml:lang="bs">IMAP klijent za elektronsku poštu</summary>
   <summary xml:lang="ca">Client de correu electrònic IMAP</summary>
   <summary xml:lang="ca-valencia">Client de correu electrònic IMAP</summary>
@@ -54,6 +57,7 @@
   <summary xml:lang="sv">IMAP e-postprogram</summary>
   <summary xml:lang="uk">Клієнтська програма для роботи з електронною поштою IMAP</summary>
   <summary xml:lang="x-test">xxIMAP E-mail Clientxx</summary>
+  <summary xml:lang="zh-TW">IMAP 電子郵件程式</summary>
   <description>
     <p>
       Trojitá is an email program ("client") specialized in giving fast and efficient access to mailboxes over the IMAP protocol.
@@ -85,6 +89,7 @@
       Trojitá is a stand-alone program, not part of a "personal information manager" suite.
     </p>
     <p xml:lang="ar">يعطي تروجيتا الأولويّة إلى الكفاءة، والسّرعة والمعايير الحرّة على الأهداف الأخرى. يهدف أيضًا إلى أن يكون عابرًا للمنصّات وأن يعمل عملًا جيّدًا على أيّ شيء، من حواسيب سطح المكتب الكبيرة إلى الهواتف الصّغيرة. تروجيتا برنامج مستقلّ، وليس جزء من طقم "مدير معلومات شخصيّة".</p>
+    <p xml:lang="ast">Prioriza la eficiencia, velocidá y estándares abiertos sobro otres metes. Trojitá tamién tien l'oxetivu de ser multi-plataforma y furrular en toa triba de preseos. Trojitá ye un programa independiente, non una parte de la suit del «xestor d'información personal».</p>
     <p xml:lang="bs">Daje prednost efikasnosti, brzini i otvorenim standardima ispred drugih ciljeva. Trojitá također teži da bude višestruka platforma i da dobro funkcioniše na svemu, od velikih desktop računara do malih mobilnih uređaja. Trojitá je nezavisan program, nije dio "lično-informacijskog menadžerskog" paketa.</p>
     <p xml:lang="ca">Dóna prioritat a l'eficiència, la velocitat i els estàndards oberts per sobre d'altres objectius. Trojitá també aspira a ser multiplataforma, i funciona bé arreu, des d'ordinadors d'escriptori grans a telèfons mòbils petits. Trojitá és un programa independent, no forma part d'una suite de «gestor de la informació personal» (PIM).</p>
     <p xml:lang="ca-valencia">Dóna prioritat a l'eficiència, la velocitat i els estàndards oberts per sobre d'altres objectius. Trojitá també aspira a ser multiplataforma, i funciona bé arreu, des d'ordinadors d'escriptori grans a telèfons mòbils petits. Trojitá és un programa independent, no forma part d'una suite de «gestor de la informació personal» (PIM).</p>
@@ -106,9 +111,11 @@
     <p xml:lang="x-test">xxIt prioritizes efficiency, speed and open standards above other goals. Trojitá also aims to be multi-platform, and functions well on everything from big desktop computers to small cellphones. Trojitá is a stand-alone program, not part of a "personal information manager" suite.xx</p>
     <p>What could make Trojitá interesting for you:</p>
     <p xml:lang="ar">ما قد يجعل تروجيتا مشوّقًا لك:</p>
+    <p xml:lang="ast">Qué te podría interesar de Trojitá:</p>
     <p xml:lang="bs">Šta interesantno Trojitá može uraditi za vas:</p>
     <p xml:lang="ca">Què us podria fer el Trojitá interessant:</p>
     <p xml:lang="ca-valencia">Què vos podria fer el Trojitá interessant:</p>
+    <p xml:lang="cs">Čím by se stala Trojitá zajímavou pro vás:</p>
     <p xml:lang="da">Hvad der kunne gøre Trojitá interessant for dig:</p>
     <p xml:lang="el">Τι θα μπορούσε να κάνει την Trojitá ενδιαφέρουσα για εσάς:</p>
     <p xml:lang="en-GB">What could make Trojitá interesting for you:</p>
@@ -128,9 +135,11 @@
     <ul>
       <li>Very fast and robust IMAP core</li>
       <li xml:lang="ar">نواة IMAP متينة وسريعة جدًّا</li>
+      <li xml:lang="ast">Nucleu IMAP perrápidu y robustu</li>
       <li xml:lang="bs">Veoma brza i snažna IMAP jezgra</li>
       <li xml:lang="ca">Un cor IMAP molt ràpid i robust</li>
       <li xml:lang="ca-valencia">Un cor IMAP molt ràpid i robust</li>
+      <li xml:lang="cs">Velmi rychlé a robustní jádro IMAP</li>
       <li xml:lang="da">Hurtig og robust IMAP-kerne</li>
       <li xml:lang="de">Sehr schneller und robuster IMAP-Kern</li>
       <li xml:lang="el">Πολύ γρήγορος και σταθερός IMAP πυρήνας</li>
@@ -193,9 +202,11 @@
       <li xml:lang="x-test">xxOn-demand message list and body part loading ("lazy loading")xx</li>
       <li>Offline IMAP support</li>
       <li xml:lang="ar">دعم IMAP بلا إنترنت</li>
+      <li xml:lang="ast">Sofitu IMAP fuera de llinia </li>
       <li xml:lang="bs">Podrška za izvanmrežni IMAP</li>
       <li xml:lang="ca">Permet IMAP desconnectat</li>
       <li xml:lang="ca-valencia">Permet IMAP desconnectat</li>
+      <li xml:lang="cs">Offline podpora IMAP</li>
       <li xml:lang="da">Understøttelse af offline-IMAP</li>
       <li xml:lang="de">Unterstützung für Offline-IMAP</li>
       <li xml:lang="el">Εκτός δικτύου υποστήριξη IMAP</li>
@@ -224,7 +235,7 @@
       <li xml:lang="en-GB">Support for bandwidth-saving mode aimed at mobile users with expensive connection</li>
       <li xml:lang="es">Modo de ahorro de ancho de banda dirigido a usuarios de móviles con conexiones caras</li>
       <li xml:lang="fi">Tuki kaistansäästötilalle ajatellen mobiilikäyttäjiä, joille verkkoyhteys on kallis</li>
-      <li xml:lang="gl">Dispón dun modo de aforro de ancho de banda, pensado para usuarios de teléfonos móbiles para os que a conexión a internet resulta custosa.</li>
+      <li xml:lang="gl">Dispón dun modo de aforro de largura de banda, pensado para usuarios de teléfonos móbiles para os que a conexión a internet resulta custosa.</li>
       <li xml:lang="it">Supporto della modalità per il risparmio della banda, con lo sguardo rivolto agli utenti mobili con connessioni dispendiose</li>
       <li xml:lang="ko">모바일 사용자를 위한 대역폭 절약 모드</li>
       <li xml:lang="nl">Ondersteuning voor bandbreedte besparende modus gericht op mobiele gebruikers met een dure verbinding</li>
@@ -288,6 +299,7 @@
     </screenshot>
     <screenshot>
       <caption>Excessively quoted text is automatically collapsed</caption>
+      <caption xml:lang="ar">نصوص الاقتباس الطّويلة تُطوى آليًّا</caption>
       <caption xml:lang="ca">El text citat excessivament es col·lapsa</caption>
       <caption xml:lang="ca-valencia">El text citat excessivament es col·lapsa</caption>
       <caption xml:lang="el">Το υπέρμετρο κείμενο σε παράθεση συμπτύσσεται αυτόματα</caption>
@@ -299,6 +311,7 @@
       <caption xml:lang="pl">Długi tekst cytowany jest samoczynnie zwijany</caption>
       <caption xml:lang="pt">O texto citado em excesso é fechado automaticamente</caption>
       <caption xml:lang="pt-BR">O texto citado em excesso é fechado automaticamente</caption>
+      <caption xml:lang="sk">Nadmerne zvýraznený text sa automaticky zbalí</caption>
       <caption xml:lang="sv">Överdrivet citerad text dras automatiskt ihop</caption>
       <caption xml:lang="uk">Автоматичне згортання значних фрагментів цитованих повідомлень.</caption>
       <caption xml:lang="x-test">xxExcessively quoted text is automatically collapsedxx</caption>
@@ -306,6 +319,7 @@
     </screenshot>
     <screenshot>
       <caption>Encrypted and signed e-mail is supported, with status given in plain English</caption>
+      <caption xml:lang="ar">البُرد الإلكترونيّة المعمّاة والموقّعة مدعومة، حيث تُعطى حالتها بالإنجليزية</caption>
       <caption xml:lang="ca">Funciona amb correu electrònic encriptat i signat, amb l'estat indicat en anglès</caption>
       <caption xml:lang="ca-valencia">Funciona amb correu electrònic encriptat i signat, amb l'estat indicat en anglés</caption>
       <caption xml:lang="el">Υποστήριξη υπογεγραμμένων μηνυμάτων· η κατάσταση εμφανίζεται σε ανεπεξέργαστο κείμενο στην Αγγλική γλώσσα.</caption>
@@ -317,6 +331,7 @@
       <caption xml:lang="pl">Obsługa szyfrowanej i podpisanej poczty wraz ze stanem podawanym w prostym angielskim</caption>
       <caption xml:lang="pt">O e-mail encriptado e assinado é suportado, sendo o seu estado indicado em Inglês simples</caption>
       <caption xml:lang="pt-BR">Há suporte para e-mail criptografado e assinado, com status indicado em inglês simples</caption>
+      <caption xml:lang="sk">Podporuje šifrované a podpísaní e-maily so stavom v čistej angličtine</caption>
       <caption xml:lang="sv">Krypterade och signerade brev stöds, med status angiven på vanlig svenska</caption>
       <caption xml:lang="uk">Підтримка шифрування та підписування повідомлень із визначенням стану англійською.</caption>
       <caption xml:lang="x-test">xxEncrypted and signed e-mail is supported, with status given in plain Englishxx</caption>

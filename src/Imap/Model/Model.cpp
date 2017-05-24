@@ -20,25 +20,28 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <QAbstractProxyModel>
 #include <QAuthenticator>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QtAlgorithms>
 #include "Model.h"
-#include "MailboxTree.h"
-#include "SpecialFlagNames.h"
-#include "TaskPresentationModel.h"
-#include "Utils.h"
 #include "Common/FindWithUnknown.h"
 #include "Common/InvokeMethod.h"
 #include "Imap/Encoders.h"
+#include "Imap/Model/ItemRoles.h"
+#include "Imap/Model/MailboxTree.h"
+#include "Imap/Model/SpecialFlagNames.h"
+#include "Imap/Model/TaskPresentationModel.h"
+#include "Imap/Model/Utils.h"
 #include "Imap/Tasks/AppendTask.h"
 #include "Imap/Tasks/CreateMailboxTask.h"
 #include "Imap/Tasks/GetAnyConnectionTask.h"
 #include "Imap/Tasks/KeepMailboxOpenTask.h"
 #include "Imap/Tasks/OpenConnectionTask.h"
 #include "Imap/Tasks/UpdateFlagsTask.h"
+#include "Imap/Tasks/CopyMoveMessagesTask.h"
 #include "Streams/SocketFactory.h"
 
 //#define DEBUG_PERIODICALLY_DUMP_TASKS
@@ -100,14 +103,17 @@ namespace Imap
 namespace Mailbox
 {
 
-Model::Model(QObject *parent, AbstractCache *cache, SocketFactoryPtr socketFactory, TaskFactoryPtr taskFactory):
-    // parent
-    QAbstractItemModel(parent),
-    // our tools
-    m_cache(cache), m_socketFactory(std::move(socketFactory)), m_taskFactory(std::move(taskFactory)), m_maxParsers(4), m_mailboxes(0),
-    m_netPolicy(NETWORK_OFFLINE),  m_taskModel(0), m_hasImapPassword(PasswordAvailability::NOT_REQUESTED)
+Model::Model(QObject *parent, std::shared_ptr<AbstractCache> cache, SocketFactoryPtr socketFactory, TaskFactoryPtr taskFactory)
+    : QAbstractItemModel(parent)
+    , m_cache(cache)
+    , m_socketFactory(std::move(socketFactory))
+    , m_taskFactory(std::move(taskFactory))
+    , m_maxParsers(4)
+    , m_mailboxes(nullptr)
+    , m_netPolicy(NETWORK_OFFLINE)
+    , m_taskModel(nullptr)
+    , m_hasImapPassword(PasswordAvailability::NOT_REQUESTED)
 {
-    m_cache->setParent(this);
     m_startTls = m_socketFactory->startTlsRequired();
 
     m_mailboxes = new TreeItemMailbox(0);
@@ -497,34 +503,6 @@ void Model::emitMessageCountChanged(TreeItemMailbox *const mailbox)
     emit messageCountPossiblyChanged(mailboxIndex);
 }
 
-/** @short Retrieval of a message part has completed */
-bool Model::finalizeFetchPart(TreeItemMailbox *const mailbox, const uint sequenceNo, const QByteArray &partId)
-{
-    // At first, verify that the message itself is marked as loaded.
-    // If it isn't, it's probably because of Model::releaseMessageData().
-    TreeItem *item = mailbox->m_children[0]; // TreeItemMsgList
-    item = item->child(sequenceNo - 1, this);   // TreeItemMessage
-    Q_ASSERT(item);   // FIXME: or rather throw an exception?
-    if (item->accessFetchStatus() == TreeItem::NONE) {
-        // ...and it indeed got released, so let's just return and don't try to check anything
-        return false;
-    }
-
-    TreeItemPart *part = mailbox->partIdToPtr(this, static_cast<TreeItemMessage *>(item), partId);
-    if (! part) {
-        qDebug() << "Can't verify part fetching status: part is not here!";
-        return false;
-    }
-    if (part->loading()) {
-        part->setFetchStatus(TreeItem::UNAVAILABLE);
-        QModelIndex idx = part->toIndex(this);
-        emit dataChanged(idx, idx);
-        return false;
-    } else {
-        return true;
-    }
-}
-
 void Model::handleCapability(Imap::Parser *ptr, const Imap::Responses::Capability *const resp)
 {
     updateCapabilities(ptr, resp->capabilities);
@@ -683,6 +661,9 @@ TreeItem *Model::translatePtr(const QModelIndex &index) const
 
 QVariant Model::data(const QModelIndex &index, int role) const
 {
+    if (role == RoleIsNetworkOffline)
+        return !isNetworkAvailable();
+
     return translatePtr(index)->data(const_cast<Model *>(this), role);
 }
 
@@ -1030,7 +1011,7 @@ void Model::askForMsgPart(TreeItemPart *item, bool onlyFromCache)
                                                       itemForFetchOperation->partId() + ".X-RAW");
 
         if (!data.isNull()) {
-            Imap::decodeContentTransferEncoding(data, item->encoding(), item->dataPtr());
+            Imap::decodeContentTransferEncoding(data, item->transferEncoding(), item->dataPtr());
             item->setFetchStatus(TreeItem::DONE);
             return;
         }
@@ -1050,7 +1031,7 @@ void Model::askForMsgPart(TreeItemPart *item, bool onlyFromCache)
         TreeItemPart::PartFetchingMode fetchingMode = TreeItemPart::FETCH_PART_IMAP;
         if (!isSpecialRawPart && keepTask->parser && accessParser(keepTask->parser).capabilitiesFresh &&
                 accessParser(keepTask->parser).capabilities.contains(QStringLiteral("BINARY"))) {
-            if (!item->hasChildren(0)) {
+            if (!item->hasChildren(0) && !item->m_binaryCTEFailed) {
                 // The BINARY only actually makes sense on leaf MIME nodes
                 fetchingMode = TreeItemPart::FETCH_PART_BINARY;
             }
@@ -1259,6 +1240,11 @@ void Model::markMessagesRead(const QModelIndexList &messages, const FlagsOperati
     this->setMessageFlags(messages, QStringLiteral("\\Seen"), marked);
 }
 
+ImapTask *Model::copyMoveMessages(const QString &destMailboxName, const QModelIndexList &messages, const CopyMoveOperation op)
+{
+    return m_taskFactory->createCopyMoveMessagesTask(this, messages, destMailboxName, op);
+}
+
 void Model::copyMoveMessages(TreeItemMailbox *sourceMbox, const QString &destMailboxName, Imap::Uids uids, const CopyMoveOperation op)
 {
     if (m_netPolicy == NETWORK_OFFLINE) {
@@ -1426,11 +1412,10 @@ void Model::unsubscribeMailbox(const QString &name)
 
 void Model::saveUidMap(TreeItemMsgList *list)
 {
-    Imap::Uids seqToUid;
-    seqToUid.reserve(list->m_children.size());
-    auto end = list->m_children.constEnd();
-    for (auto it = list->m_children.constBegin(); it != end; ++it)
-        seqToUid << static_cast<TreeItemMessage *>(*it)->uid();
+    Imap::Uids seqToUid(list->m_children.size(), 0);
+    std::transform(list->m_children.constBegin(), list->m_children.cend(), seqToUid.begin(), [](TreeItem *item) {
+        return static_cast<TreeItemMessage *>(item)->uid();
+    });
     cache()->setUidMapping(static_cast<TreeItemMailbox *>(list->parent())->mailbox(), seqToUid);
 }
 
@@ -1505,12 +1490,9 @@ void Model::slotParserLineSent(Parser *parser, const QByteArray &line)
     logTrace(parser->parserId(), Common::LOG_IO_WRITTEN, QString(), QString::fromUtf8(line));
 }
 
-void Model::setCache(AbstractCache *cache)
+void Model::setCache(std::shared_ptr<AbstractCache> cache)
 {
-    if (m_cache)
-        m_cache->deleteLater();
     m_cache = cache;
-    m_cache->setParent(this);
 }
 
 void Model::runReadyTasks()
@@ -1550,7 +1532,7 @@ void Model::removeDeletedTasks(const QList<ImapTask *> &deletedTasks, QList<Imap
         (*deletedIt)->deleteLater();
         activeTasks.removeOne(*deletedIt);
         // It isn't destroyed yet, but should be removed from the model nonetheless
-        m_taskModel->slotTaskDestroyed(*deletedIt);
+        m_taskModel->slotSomeTaskDestroyed();
     }
 }
 
@@ -1662,11 +1644,10 @@ void Model::slotTasksChanged()
 
 void Model::slotTaskDying(QObject *obj)
 {
-    ImapTask *task = static_cast<ImapTask *>(obj);
-    for (QMap<Parser *,ParserState>::iterator it = m_parsers.begin(); it != m_parsers.end(); ++it) {
-        it->activeTasks.removeOne(task);
-    }
-    m_taskModel->slotTaskDestroyed(task);
+    std::for_each(m_parsers.begin(), m_parsers.end(), [obj](ParserState &state) {
+        state.activeTasks.removeOne(reinterpret_cast<ImapTask*>(obj));
+    });
+    m_taskModel->slotSomeTaskDestroyed();
 }
 
 TreeItemMailbox *Model::mailboxForSomeItem(QModelIndex index)

@@ -118,18 +118,28 @@ void CryptographyMessageModelTest::testImapMessageParts_data()
 /** @short Verify building and retrieving of a custom MIME tree structure */
 void CryptographyMessageModelTest::testCustomMessageParts()
 {
+#if defined(__has_feature)
+#  if  __has_feature(address_sanitizer)
+    // better would be checking for UBSAN, but I don't think that there's an appropriate feature for this
+#    define SKIP_QSTANDARDITEMMODEL
+#  endif
+#endif
+
+#ifdef SKIP_QSTANDARDITEMMODEL
+    QSKIP("ASAN build, https://bugreports.qt.io/browse/QTBUG-56027");
+#else
     // Initialize model with a root item
-    QStandardItemModel *minimal = new QStandardItemModel();
+    QStandardItemModel minimal;
     QStandardItem *dummy_root = new QStandardItem();
     QStandardItem *root_mime = new QStandardItem(QStringLiteral("multipart/mixed"));
     dummy_root->appendRow(root_mime);
-    minimal->invisibleRootItem()->appendRow(dummy_root);
+    minimal.invisibleRootItem()->appendRow(dummy_root);
 
     // Make sure we didn't mess up until here
-    QVERIFY(minimal->index(0,0).child(0,0).isValid());
-    QCOMPARE(minimal->index(0,0).child(0,0).data(), root_mime->data(Qt::DisplayRole));
+    QVERIFY(minimal.index(0,0).child(0,0).isValid());
+    QCOMPARE(minimal.index(0,0).child(0,0).data(), root_mime->data(Qt::DisplayRole));
 
-    Cryptography::MessageModel msgModel(0, minimal->index(0,0));
+    Cryptography::MessageModel msgModel(0, minimal.index(0,0));
 
     QModelIndex rootPartIndex = msgModel.index(0,0).child(0,0);
 
@@ -156,6 +166,7 @@ void CryptographyMessageModelTest::testCustomMessageParts()
     QModelIndex localHtmlIndex = localRootIndex.child(1, 0);
     QVERIFY(localHtmlIndex.isValid());
     QCOMPARE(localHtmlIndex.data(Imap::Mailbox::RolePartMimeType), localHtml->data(Imap::Mailbox::RolePartMimeType));
+#endif
 }
 
 /** @short Check adding a custom MIME tree structure to an existing message

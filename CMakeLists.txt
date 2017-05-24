@@ -18,6 +18,14 @@ if(POLICY CMP0043)
     cmake_policy(SET CMP0043 OLD)
 endif()
 
+if(CMAKE_VERSION VERSION_LESS "3.1")
+    # If you aren't using and old Linux with an old GCC and old CMake, please just upgrade.
+    set(CMAKE_CXX_FLAGS "--std=c++11 ${CMAKE_CXX_FLAGS}")
+else()
+    set(CMAKE_CXX_STANDARD 11)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
 # Set a default build type if none was specified. This was shamelessly stolen
 # from VTK's cmake setup because these guys produce both CMake and a project that
 # manipulates this variable, and the web is full of posts where people say that
@@ -34,24 +42,6 @@ endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-include(FindCXXFeatures)
-if(NOT CXXFeatures_auto_FOUND)
-    message(SEND_ERROR "Your compiler doesn't support C++11's auto")
-endif()
-if(NOT CXXFeatures_static_assert_FOUND)
-    message(SEND_ERROR "Your compiler doesn't support C++11's static_assert")
-endif()
-if(NOT CXXFeatures_alignof_FOUND)
-    message(SEND_ERROR "Your compiler doesn't support C++11's alignof")
-endif()
-if(NOT CXXFeatures_nullptr_FOUND)
-    message(SEND_ERROR "Your compiler doesn't support C++11's nullptr")
-endif()
-if(NOT CXXFeatures_lambda_FOUND)
-    message(SEND_ERROR "Your compiler doesn't support C++11's lambda functions")
-endif()
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX11_COMPILER_FLAGS}")
-
 include(TrojitaOption)
 
 trojita_option(WITH_DESKTOP "Build desktop version" ON)
@@ -59,9 +49,10 @@ trojita_option(WITH_DBUS "Build with DBus library" AUTO)
 trojita_option(WITH_RAGEL "Build with Ragel library" AUTO)
 trojita_option(WITH_ZLIB "Build with zlib library" AUTO)
 trojita_option(WITH_SHARED_PLUGINS "Enable shared dynamic plugins" ON)
-trojita_option(WITH_TESTS "Build tests" ON)
+trojita_option(BUILD_TESTING "Build tests" ON)
 trojita_option(WITH_MIMETIC "Build with client-side MIME parsing" AUTO)
-trojita_option(WITH_GPGMEPP "Build with the GpgME++ library for cryptography" AUTO)
+trojita_option(WITH_GPGMEPP "Use GpgME's native C++ bindings" AUTO)
+trojita_option(WITH_KF5_GPGMEPP "Use legacy discontinued GpgME++ library from KDE frameworks" AUTO)
 
 if(WIN32)
     trojita_option(WITH_NSIS "Build Windows NSIS installer" AUTO "WITH_DESKTOP")
@@ -82,7 +73,7 @@ find_package(Qt5Widgets REQUIRED)
 find_package(Qt5LinguistTools)
 find_package(Qt5Svg REQUIRED)
 trojita_find_package(Qt5DBus "" "http://qt-project.org" "Qt5 D-Bus support" "Needed for IPC and for some plugins" WITH_DBUS)
-trojita_find_package(Qt5Test "" "http://qt-project.org" "Qt5 QTest library" "Needed for automated tests" WITH_TESTS)
+trojita_find_package(Qt5Test "" "http://qt-project.org" "Qt5 QTest library" "Needed for automated tests" BUILD_TESTING)
 if(Qt5LinguistTools_FOUND)
     find_package(Qt5LinguistForTrojita)
 endif()
@@ -94,8 +85,13 @@ trojita_plugin_option(WITH_QTKEYCHAIN_PLUGIN "Build Qtkeychain password plugin" 
 trojita_find_package(Git "" "" "" "")
 
 trojita_find_package(Mimetic "" "http://www.codesink.org/mimetic_mime_library.html" "C++ MIME Library" "Required for client-side MIME parsing" WITH_MIMETIC)
-trojita_find_package(KF5Gpgmepp "" "https://quickgit.kde.org/?p=gpgmepp.git" "C++ bindings for gpgme" "Needed for encrypted/signed e-mails" WITH_GPGMEPP)
-trojita_option(WITH_CRYPTO_MESSAGES "Enable support for encrypted messages" AUTO "WITH_MIMETIC;WITH_GPGMEPP")
+trojita_find_package(Gpgmepp "1.8.0" "https://gnupg.org/related_software/gpgme/index.html" "C++/Qt bindings for gpgme" "Needed for encrypted/signed e-mails" WITH_GPGMEPP)
+if(NOT WITH_GPGMEPP)
+    trojita_find_package(KF5Gpgmepp "" "https://commits.kde.org/gpgmepp?path=/" "C++ bindings for gpgme" "Needed for encrypted/signed e-mails" WITH_KF5_GPGMEPP)
+    trojita_option(WITH_CRYPTO_MESSAGES "Enable support for encrypted messages" AUTO "WITH_MIMETIC;WITH_KF5_GPGMEPP")
+else()
+    trojita_option(WITH_CRYPTO_MESSAGES "Enable support for encrypted messages" AUTO "WITH_MIMETIC;WITH_GPGMEPP")
+endif()
 
 if(WIN32)
     trojita_find_package(MakeNSIS "" "http://nsis.sourceforge.net" "Nullsoft Scriptable Install System" "Needed for building Windows installer" WITH_NSIS)
@@ -207,7 +203,7 @@ else()
   set(TROJITA_HAVE_MIMETIC False)
 endif()
 
-if(WITH_GPGMEPP)
+if(WITH_GPGMEPP OR WITH_KF5_GPGMEPP)
   set(TROJITA_HAVE_GPGMEPP True)
 else()
   set(TROJITA_HAVE_GPGMEPP False)
@@ -243,6 +239,7 @@ set(libCommon_SOURCES
     ${path_Common}/MetaTypes.cpp
     ${path_Common}/Paths.cpp
     ${path_Common}/SettingsNames.cpp
+    ${path_Common}/StashingReverseIterator.h
 )
 
 set(path_Plugins ${CMAKE_CURRENT_SOURCE_DIR}/src/Plugins)
@@ -258,8 +255,13 @@ set(libUiUtils_SOURCES
     ${path_UiUtils}/Color.cpp
     ${path_UiUtils}/Formatting.cpp
     ${path_UiUtils}/IconLoader.cpp
+    ${path_UiUtils}/PartLoadingOptions.h
+    ${path_UiUtils}/PartVisitor.h
+    ${path_UiUtils}/PartWalker.h
+    ${path_UiUtils}/PartWalker_impl.h
     ${path_UiUtils}/PasswordWatcher.cpp
     ${path_UiUtils}/PlainTextFormatter.cpp
+    ${path_UiUtils}/QaimDfsIterator.cpp
 )
 
 set(path_IPC ${CMAKE_CURRENT_SOURCE_DIR}/src/IPC)
@@ -277,7 +279,9 @@ endif()
 
 set(path_Composer ${CMAKE_CURRENT_SOURCE_DIR}/src/Composer)
 set(libComposer_SOURCES
+    ${path_Composer}/AbstractComposer.cpp
     ${path_Composer}/ComposerAttachments.cpp
+    ${path_Composer}/ExistingMessageComposer.cpp
     ${path_Composer}/Mailto.cpp
     ${path_Composer}/MessageComposer.cpp
     ${path_Composer}/QuoteText.cpp
@@ -321,12 +325,10 @@ if(WITH_MIMETIC)
     )
 endif()
 if(WITH_CRYPTO_MESSAGES)
-  if(WITH_GPGMEPP)
     set(libCryptography_SOURCES
         ${libCryptography_SOURCES}
         ${path_Cryptography}/GpgMe++.cpp
     )
-  endif()
 endif()
 
 if(WITH_ZLIB)
@@ -338,6 +340,7 @@ set(path_DesktopGui ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui)
 set(libDesktopGui_SOURCES
     ${path_DesktopGui}/AddressRowWidget.cpp
     ${path_DesktopGui}/AttachmentView.cpp
+    ${path_DesktopGui}/ColoredItemDelegate.cpp
     ${path_DesktopGui}/CompleteMessageWidget.cpp
     ${path_DesktopGui}/ComposeWidget.cpp
     ${path_DesktopGui}/ComposerAttachmentsList.cpp
@@ -370,6 +373,7 @@ set(libDesktopGui_SOURCES
     ${path_DesktopGui}/SettingsDialog.cpp
     ${path_DesktopGui}/SimplePartWidget.cpp
     ${path_DesktopGui}/Spinner.cpp
+    ${path_DesktopGui}/TagAddDialog.cpp
     ${path_DesktopGui}/TagListWidget.cpp
     ${path_DesktopGui}/TagWidget.cpp
     ${path_DesktopGui}/TaskProgressIndicator.cpp
@@ -385,12 +389,15 @@ set(libDesktopGui_UI
     ${path_DesktopGui}/ComposeWidget.ui
     ${path_DesktopGui}/CreateMailboxDialog.ui
     ${path_DesktopGui}/EditIdentity.ui
+    ${path_DesktopGui}/EditFavoriteTag.ui
     ${path_DesktopGui}/PasswordDialog.ui
     ${path_DesktopGui}/ProgressPopUp.ui
     ${path_DesktopGui}/SettingsCachePage.ui
     ${path_DesktopGui}/SettingsGeneralPage.ui
     ${path_DesktopGui}/SettingsImapPage.ui
     ${path_DesktopGui}/SettingsOutgoingPage.ui
+    ${path_DesktopGui}/SettingsFavoriteTagsPage.ui
+    ${path_DesktopGui}/TagAddDialog.ui
     ${path_DesktopGui}/ShortcutHandler/ShortcutConfigWidget.ui
 )
 set(libDesktopGui_RESOURCES
@@ -444,6 +451,7 @@ set(libImap_SOURCES
     ${path_Imap}/Model/MsgListModel.cpp
     ${path_Imap}/Model/NetworkWatcher.cpp
     ${path_Imap}/Model/OneMessageModel.cpp
+    ${path_Imap}/Model/FavoriteTagsModel.cpp
     ${path_Imap}/Model/ParserState.cpp
     ${path_Imap}/Model/PrettyMailboxModel.cpp
     ${path_Imap}/Model/PrettyMsgListModel.cpp
@@ -457,8 +465,6 @@ set(libImap_SOURCES
     ${path_Imap}/Model/Utils.cpp
     ${path_Imap}/Model/VisibleTasksModel.cpp
 
-    # The ModelTest is only needed when debugging manually
-    #${path_Imap}/Model/ModelTest/modeltest.cpp
     # The ModelWatcher is another debugging aid
     ${path_Imap}/Model/ModelWatcher.cpp
 
@@ -495,6 +501,11 @@ set(libImap_SOURCES
     ${path_Imap}/Tasks/UpdateFlagsTask.cpp
     ${path_Imap}/Tasks/UpdateFlagsOfAllMessagesTask.cpp
 )
+
+# The ModelTest is only needed when debugging manually
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    list(APPEND libImap_SOURCES ${path_Imap}/Model/ModelTest/modeltest.cpp)
+endif()
 
 if(WITH_RAGEL)
     message(STATUS "Using Ragel for the RFC 5322 parser")
@@ -558,13 +569,13 @@ set_source_files_properties(${version_files}
 add_library(Common STATIC ${libCommon_SOURCES})
 set_property(TARGET Common APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 add_dependencies(Common version)
-qt5_use_modules(Common Core Network)
+target_link_libraries(Common Qt5::Network)
 
 add_library(AppVersion STATIC ${libAppVersion_SOURCES})
 set_property(TARGET AppVersion APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 add_dependencies(AppVersion version)
 target_link_libraries(AppVersion Common)
-qt5_use_modules(AppVersion Core)
+target_link_libraries(AppVersion Qt5::Core)
 
 if(WITH_SHARED_PLUGINS)
     add_library(Plugins SHARED ${libPlugins_SOURCES})
@@ -575,12 +586,11 @@ else()
 endif()
 set_target_properties(Plugins PROPERTIES OUTPUT_NAME trojita_plugins)
 set_property(TARGET Plugins APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
-qt5_use_modules(Plugins Core)
+target_link_libraries(Plugins Qt5::Core)
 
 add_library(UiUtils STATIC ${libUiUtils_SOURCES})
 set_property(TARGET UiUtils APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
-target_link_libraries(UiUtils Plugins Common)
-qt5_use_modules(UiUtils Core Gui Network)
+target_link_libraries(UiUtils Plugins Common Qt5::Gui)
 
 add_library(Streams STATIC ${libStreams_SOURCES})
 set_property(TARGET Streams APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
@@ -588,36 +598,32 @@ if(WITH_ZLIB)
     set_property(TARGET Streams APPEND PROPERTY INCLUDE_DIRECTORIES ${ZLIB_INCLUDE_DIR})
     target_link_libraries(Streams ${ZLIB_LIBRARIES})
 endif()
-qt5_use_modules(Streams Network)
+target_link_libraries(Streams Qt5::Network)
 
 add_library(IPC STATIC ${libIPC_SOURCES})
 set_property(TARGET IPC APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 if(WITH_DBUS)
-    qt5_use_modules(IPC DBus Widgets)
+    target_link_libraries(IPC Qt5::DBus Qt5::Widgets)
 else()
-    qt5_use_modules(IPC Core)
+    target_link_libraries(IPC Qt5::Core)
 endif()
 
 add_library(qwwsmtpclient STATIC ${libqwwsmtpclient_SOURCES})
-qt5_use_modules(qwwsmtpclient Network)
+target_link_libraries(qwwsmtpclient Qt5::Network)
 
 add_library(MSA STATIC ${libMSA_SOURCES})
 set_property(TARGET MSA APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(MSA Imap Streams qwwsmtpclient)
-qt5_use_modules(MSA Network)
 
 add_library(Composer STATIC ${libComposer_SOURCES})
 set_property(TARGET Composer APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(Composer Common MSA Streams UiUtils qwwsmtpclient)
-qt5_use_modules(Composer Gui Network)
 
 add_library(Imap STATIC ${libImap_SOURCES})
 set_property(TARGET Imap APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
-target_link_libraries(Imap Common Streams UiUtils)
-qt5_use_modules(Imap Gui Network Sql)
+target_link_libraries(Imap Common Streams UiUtils Qt5::Sql)
 
 add_library(Cryptography STATIC ${libCryptography_SOURCES})
-qt5_use_modules(Cryptography Core)
 set_property(TARGET Cryptography APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(Cryptography Common Imap)
 if(WITH_MIMETIC)
@@ -625,13 +631,15 @@ if(WITH_MIMETIC)
     set_property(TARGET Cryptography APPEND PROPERTY INCLUDE_DIRECTORIES ${MIMETIC_INCLUDE_DIRS})
 endif()
 if(WITH_CRYPTO_MESSAGES)
-  if(WITH_GPGMEPP)
-    if (WIN32)
-      target_link_libraries(Cryptography KF5::Gpgmepp KF5::QGpgme)
-    else()
-      target_link_libraries(Cryptography KF5::Gpgmepp-pthread KF5::QGpgme)
+    if(WITH_GPGMEPP)
+        target_link_libraries(Cryptography Gpgmepp QGpgme)
+    elseif(WITH_KF5_GPGMEPP)
+        if(WIN32)
+            target_link_libraries(Cryptography KF5::Gpgmepp KF5::QGpgme)
+        else()
+            target_link_libraries(Cryptography KF5::Gpgmepp-pthread KF5::QGpgme)
+        endif()
     endif()
-  endif()
 endif()
 
 ## ClearText password plugin
@@ -642,8 +650,7 @@ endif()
 ## QtKeyChain plugin
 if(WITH_QTKEYCHAIN_PLUGIN)
     trojita_add_plugin(trojita_plugin_QtKeychainPasswordPlugin WITH_QTKEYCHAIN_PLUGIN src/Plugins/QtKeyChain/QtKeyChainPassword.cpp)
-    qt5_use_modules(trojita_plugin_QtKeychainPasswordPlugin Core DBus)
-    target_link_libraries(trojita_plugin_QtKeychainPasswordPlugin ${QTKEYCHAIN_LIBRARIES})
+    target_link_libraries(trojita_plugin_QtKeychainPasswordPlugin ${QTKEYCHAIN_LIBRARIES} Qt5::DBus)
     set_property(TARGET trojita_plugin_QtKeychainPasswordPlugin APPEND PROPERTY INCLUDE_DIRECTORIES ${QTKEYCHAIN_INCLUDE_DIRS})
 endif()
 
@@ -668,7 +675,7 @@ if(WITH_ABOOKADDRESSBOOK_PLUGIN)
     trojita_add_plugin(trojita_plugin_AbookAddressbookPlugin WITH_ABOOKADDRESSBOOK_PLUGIN ${libAbookAddressbook_SOURCES} ${libAbookAddressbook_UI_OUT})
     set_property(TARGET trojita_plugin_AbookAddressbookPlugin APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 
-    qt5_use_modules(trojita_plugin_AbookAddressbookPlugin Widgets)
+    target_link_libraries(trojita_plugin_AbookAddressbookPlugin Qt5::Widgets)
 
     set(be_contacts_SOURCES
         ${path_AbookAddressbook}/main.cpp
@@ -681,7 +688,7 @@ if(WITH_ABOOKADDRESSBOOK_PLUGIN)
         set_property(TARGET be.contacts APPEND PROPERTY COMPILE_DEFINITIONS QT_STATICPLUGIN)
         target_link_libraries(be.contacts trojita_plugin_AbookAddressbookPlugin)
     endif()
-    qt5_use_modules(be.contacts Widgets)
+    target_link_libraries(be.contacts Qt5::Widgets)
 endif()
 
 # Generate file static_plugins.h.in
@@ -701,15 +708,13 @@ if(WITH_DESKTOP)
     # The following is needed for the LineEdit widget within the .ui files.
     # The ${path_DesktopGui} is needed so that the generated ui_*.h file can find the headers of the custom widgets
     set_property(TARGET DesktopGui APPEND PROPERTY INCLUDE_DIRECTORIES ${path_DesktopGui})
-    target_link_libraries(DesktopGui Common UiUtils Composer Cryptography Imap IPC MSA Plugins Streams qwwsmtpclient)
+    target_link_libraries(DesktopGui Common UiUtils Composer Cryptography Imap IPC MSA Plugins Streams qwwsmtpclient Qt5::WebKitWidgets)
 
     # On Windows build a real Win32 GUI application without console window
     # On other platforms WIN32 flag is ignored
     add_executable(trojita WIN32 ${trojita_desktop_SOURCES} ${trojita_QM})
     set_property(TARGET trojita APPEND PROPERTY COMPILE_DEFINITIONS QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
     target_link_libraries(trojita AppVersion Common UiUtils DesktopGui ${STATIC_PLUGINS})
-    qt5_use_modules(DesktopGui Network WebKitWidgets)
-    qt5_use_modules(trojita Widgets Network)
 endif()
 
 
@@ -724,10 +729,10 @@ if(WITH_ABOOKADDRESSBOOK_PLUGIN)
 endif()
 
 if(WITH_DESKTOP)
-    copy_desktop_file_without_cruft("${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/trojita.desktop" "${CMAKE_CURRENT_BINARY_DIR}/trojita-DesktopGui.desktop")
+    copy_desktop_file_without_cruft("${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/org.kde.trojita.desktop" "${CMAKE_CURRENT_BINARY_DIR}/org.kde.trojita-DesktopGui.desktop")
     install(TARGETS trojita RUNTIME DESTINATION bin)
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/trojita-DesktopGui.desktop DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications/" RENAME trojita.desktop)
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/trojita.appdata.xml DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/appdata/")
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.kde.trojita-DesktopGui.desktop DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications/" RENAME org.kde.trojita.desktop)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/Gui/org.kde.trojita.appdata.xml DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/metainfo/")
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/icons/trojita.png DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/32x32/apps/")
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/icons/trojita.svg DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps/")
 endif()
@@ -737,41 +742,43 @@ if(WITH_NSIS)
 endif()
 
 
-if(WITH_TESTS)
+if(BUILD_TESTING)
     set(test_LibMailboxSync_SOURCES
         tests/Utils/ModelEvents.cpp
         tests/Utils/LibMailboxSync.cpp
     )
     add_library(test_LibMailboxSync STATIC ${test_LibMailboxSync_SOURCES})
-    qt5_use_modules(test_LibMailboxSync Test Network)
     set_property(TARGET test_LibMailboxSync APPEND PROPERTY INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}/tests
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/Utils)
-    target_link_libraries(test_LibMailboxSync Imap MSA Streams Common Composer)
+    target_link_libraries(test_LibMailboxSync Imap MSA Streams Common Composer Qt5::Test)
 
     macro(trojita_test dir fname)
         set(test_${fname}_SOURCES tests/${dir}/test_${fname}.cpp)
         add_executable(test_${fname} ${test_${fname}_SOURCES})
         target_link_libraries(test_${fname} Imap MSA Streams Common Composer Cryptography test_LibMailboxSync)
-        qt5_use_modules(test_${fname} Network Sql Test Widgets)
         set_property(TARGET test_${fname} APPEND PROPERTY INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/tests)
         if(NOT CMAKE_CROSSCOMPILING)
             add_test(test_${fname} test_${fname})
         endif()
     endmacro()
 
+    set(UBSAN_ENV_SUPPRESSIONS "UBSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/ubsan.supp")
+
     enable_testing()
     trojita_test(Composer Composer_Submission)
+    trojita_test(Composer Composer_Existing)
     trojita_test(Composer Composer_responses)
+    target_link_libraries(test_Composer_responses Qt5::WebKitWidgets)
     trojita_test(Composer Html_formatting)
-    qt5_use_modules(test_Composer_responses WebKitWidgets)
-    qt5_use_modules(test_Html_formatting WebKitWidgets)
+    target_link_libraries(test_Html_formatting Qt5::WebKitWidgets)
     trojita_test(Imap Imap_DisappearingMailboxes)
     trojita_test(Imap Imap_Idle)
     trojita_test(Imap Imap_LowLevelParser)
     trojita_test(Imap Imap_Message)
     trojita_test(Imap Imap_Model)
     trojita_test(Imap Imap_MsgPartNetAccessManager)
+    set_property(TEST test_Imap_MsgPartNetAccessManager PROPERTY ENVIRONMENT "${UBSAN_ENV_SUPPRESSIONS}")
     trojita_test(Imap Imap_Parser_parse)
     trojita_test(Imap Imap_Parser_write)
     trojita_test(Imap Imap_Responses)
@@ -798,6 +805,7 @@ if(WITH_TESTS)
       endif()
 
       add_library(fake-dev-random SHARED ${CMAKE_CURRENT_SOURCE_DIR}/tests/Utils/fake-dev-random.c)
+      set_target_properties(fake-dev-random PROPERTIES AUTOMOC off)
       target_link_libraries(fake-dev-random dl)
 
       # FIXME: it would be nice to depend on the contents of keys/, but in my testing it produces Makefiles
@@ -810,6 +818,7 @@ if(WITH_TESTS)
       add_custom_target(crypto_test_data DEPENDS crypto_test_data.h)
 
       trojita_test(Cryptography Cryptography_PGP)
+      set_property(TEST test_Cryptography_PGP PROPERTY ENVIRONMENT "${UBSAN_ENV_SUPPRESSIONS}")
       add_dependencies(test_Cryptography_PGP crypto_test_data)
     endif()
 
@@ -821,6 +830,8 @@ if(WITH_TESTS)
     trojita_test(Misc rfccodecs)
     trojita_test(Misc prettySize)
     trojita_test(Misc Formatting)
+    trojita_test(Misc QaimDfsIterator)
+    trojita_test(Misc FavoriteTagsModel)
 
 endif()
 

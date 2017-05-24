@@ -44,7 +44,7 @@ namespace Mailbox
 TreeItem::TreeItem(TreeItem *parent): m_parent(parent)
 {
     // These just have to be present in the context of TreeItem, otherwise they couldn't access the protected members
-    static_assert(static_cast<intptr_t>(alignof(TreeItem)) > TreeItem::TagMask,
+    static_assert(static_cast<intptr_t>(alignof(TreeItem&)) > TreeItem::TagMask,
                   "class TreeItem must be aligned at at least four bytes due to the FetchingState optimization");
     static_assert(DONE <= TagMask, "Invalid masking for pointer tag access");
 }
@@ -479,7 +479,7 @@ void TreeItemMailbox::handleFetchResponse(Model *const model,
                 // we were in fact asked to only fetch the raw data and the user is not itnerested in the processed data at all.
                 if (part->loading()) {
                     // got to decode the part data by hand
-                    Imap::decodeContentTransferEncoding(data, part->encoding(), part->dataPtr());
+                    Imap::decodeContentTransferEncoding(data, part->transferEncoding(), part->dataPtr());
                     part->setFetchStatus(DONE);
                     changedParts.append(part);
                     if (message->uid()
@@ -1263,6 +1263,14 @@ QVariant TreeItemMessage::data(Model *const model, int role)
         return parent()->parent()->data(model, role);
     case RolePartMimeType:
         return QByteArrayLiteral("message/rfc822");
+    case RoleIMAPRelativeUrl:
+        if (m_uid) {
+            return QByteArray("/" + QUrl::toPercentEncoding(data(model, RoleMailboxName).toString())
+                              + ";UIDVALIDITY=" + data(model, RoleMailboxUidValidity).toByteArray()
+                              + "/;UID=" + QByteArray::number(m_uid));
+        } else {
+            return QVariant();
+        }
     }
 
     // Any other roles will result in fetching the data; however, we won't exit if the data isn't available yet
@@ -1556,8 +1564,13 @@ bool TreeItemMessage::hasNestedAttachments(Model *const model, TreeItemPart *par
 }
 
 
-TreeItemPart::TreeItemPart(TreeItem *parent, const QByteArray &mimeType):
-    TreeItem(parent), m_mimeType(mimeType.toLower()), m_octets(0), m_partMime(0), m_partRaw(0)
+TreeItemPart::TreeItemPart(TreeItem *parent, const QByteArray &mimeType)
+    : TreeItem(parent)
+    , m_mimeType(mimeType.toLower())
+    , m_octets(0)
+    , m_partMime(nullptr)
+    , m_partRaw(nullptr)
+    , m_binaryCTEFailed(false)
 {
     if (isTopLevelMultiPart()) {
         // Note that top-level multipart messages are special, their immediate contents
@@ -1566,8 +1579,13 @@ TreeItemPart::TreeItemPart(TreeItem *parent, const QByteArray &mimeType):
     }
 }
 
-TreeItemPart::TreeItemPart(TreeItem *parent):
-    TreeItem(parent), m_mimeType("text/plain"), m_octets(0), m_partMime(0), m_partRaw(0)
+TreeItemPart::TreeItemPart(TreeItem *parent)
+    : TreeItem(parent)
+    , m_mimeType("text/plain")
+    , m_octets(0)
+    , m_partMime(nullptr)
+    , m_partRaw(nullptr)
+    , m_binaryCTEFailed(false)
 {
 }
 
@@ -1643,8 +1661,8 @@ QVariant TreeItemPart::data(Model *const model, int role)
         return m_contentFormat;
     case RolePartContentDelSp:
         return m_delSp;
-    case RolePartEncoding:
-        return m_encoding;
+    case RolePartTransferEncoding:
+        return m_transferEncoding;
     case RolePartBodyFldId:
         return m_bodyFldId;
     case RolePartBodyDisposition:
@@ -1678,6 +1696,15 @@ QVariant TreeItemPart::data(Model *const model, int role)
         return QVariant::fromValue(dataPtr());
     case RolePartBodyFldParam:
         return QVariant::fromValue(m_bodyFldParam);
+    case RoleIMAPRelativeUrl:
+        if (message() && message()->uid()) {
+            return QByteArray("/" + QUrl::toPercentEncoding(data(model, RoleMailboxName).toString())
+                              + ";UIDVALIDITY=" + data(model, RoleMailboxUidValidity).toByteArray()
+                              + "/;UID=" + QByteArray::number(message()->uid())
+                              + "/;SECTION=" + partId());
+        } else {
+            return QVariant();
+        }
     }
 
 
@@ -1944,7 +1971,7 @@ QByteArray TreeItemModifiedPart::partIdForFetch(const PartFetchingMode mode) con
 }
 
 TreeItemPartMultipartMessage::TreeItemPartMultipartMessage(TreeItem *parent, const Message::Envelope &envelope):
-    TreeItemPart(parent, "message/rfc822"), m_envelope(envelope), m_partHeader(0), m_partText(0)
+    TreeItemPart(parent, "message/rfc822"), m_envelope(envelope)
 {
 }
 
@@ -1975,14 +2002,14 @@ TreeItem *TreeItemPartMultipartMessage::specialColumnPtr(int row, int column) co
     switch (column) {
     case OFFSET_HEADER:
         if (!m_partHeader) {
-            m_partHeader = new TreeItemModifiedPart(const_cast<TreeItemPartMultipartMessage*>(this), OFFSET_HEADER);
+            m_partHeader.reset(new TreeItemModifiedPart(const_cast<TreeItemPartMultipartMessage*>(this), OFFSET_HEADER));
         }
-        return m_partHeader;
+        return m_partHeader.get();
     case OFFSET_TEXT:
         if (!m_partText) {
-            m_partText = new TreeItemModifiedPart(const_cast<TreeItemPartMultipartMessage*>(this), OFFSET_TEXT);
+            m_partText.reset(new TreeItemModifiedPart(const_cast<TreeItemPartMultipartMessage*>(this), OFFSET_TEXT));
         }
-        return m_partText;
+        return m_partText.get();
     default:
         return TreeItemPart::specialColumnPtr(row, column);
     }
@@ -1993,13 +2020,11 @@ void TreeItemPartMultipartMessage::silentlyReleaseMemoryRecursive()
     TreeItemPart::silentlyReleaseMemoryRecursive();
     if (m_partHeader) {
         m_partHeader->silentlyReleaseMemoryRecursive();
-        delete m_partHeader;
-        m_partHeader = 0;
+        m_partHeader = nullptr;
     }
     if (m_partText) {
         m_partText->silentlyReleaseMemoryRecursive();
-        delete m_partText;
-        m_partText = 0;
+        m_partText = nullptr;
     }
 }
 

@@ -107,7 +107,7 @@ class Model: public QAbstractItemModel
         ReadWrite /**< @short Invoke SELECT if necessarry */
     };
 
-    mutable AbstractCache *m_cache;
+    mutable std::shared_ptr<AbstractCache> m_cache;
     mutable SocketFactoryPtr m_socketFactory;
     TaskFactoryPtr m_taskFactory;
     mutable QMap<Parser *,ParserState> m_parsers;
@@ -122,7 +122,7 @@ class Model: public QAbstractItemModel
 
 
 public:
-    Model(QObject *parent, AbstractCache *cache, SocketFactoryPtr m_socketFactory, TaskFactoryPtr m_taskFactory);
+    Model(QObject *parent, std::shared_ptr<AbstractCache> cache, SocketFactoryPtr m_socketFactory, TaskFactoryPtr m_taskFactory);
     ~Model();
 
     virtual QModelIndex index(int row, int column, const QModelIndex &parent) const;
@@ -152,12 +152,12 @@ public:
     void handleSocketDisconnectedResponse(Imap::Parser *ptr, const Imap::Responses::SocketDisconnectedResponse *const resp);
     void handleParseErrorResponse(Imap::Parser *ptr, const Imap::Responses::ParseErrorResponse *const resp);
 
-    AbstractCache *cache() const { return m_cache; }
+    std::shared_ptr<AbstractCache> cache() const { return m_cache; }
     /** Throw away current cache implementation, replace it with the new one
 
     The old cache is automatically deleted.
     */
-    void setCache(AbstractCache *cache);
+    void setCache(std::shared_ptr<AbstractCache> cache);
 
     /** @short Force a SELECT / EXAMINE of a mailbox
 
@@ -179,6 +179,8 @@ public:
     /** @short Run the EXPUNGE command in the specified mailbox */
     void expungeMailbox(const QModelIndex &mailbox);
 
+    /** @short Copy or move indicated messages between two mailboxes */
+    ImapTask *copyMoveMessages(const QString &destMboxName, const QModelIndexList &messages, const CopyMoveOperation op);
     /** @short Copy or move a sequence of messages between two mailboxes */
     void copyMoveMessages(TreeItemMailbox *sourceMbox, const QString &destMboxName, Imap::Uids uids, const CopyMoveOperation op);
 
@@ -492,7 +494,6 @@ private:
 
     void finalizeList(Parser *parser, TreeItemMailbox *const mailboxPtr);
     void finalizeIncrementalList(Parser *parser, const QString &parentMailboxName);
-    bool finalizeFetchPart(TreeItemMailbox *const mailbox, const uint sequenceNo, const QByteArray &partId);
     void genericHandleFetch(TreeItemMailbox *mailbox, const Imap::Responses::Fetch *const resp);
 
     void replaceChildMailboxes(TreeItemMailbox *mailboxPtr, const TreeItemChildrenList &mailboxes);

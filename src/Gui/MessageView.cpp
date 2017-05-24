@@ -55,7 +55,8 @@
 namespace Gui
 {
 
-MessageView::MessageView(QWidget *parent, QSettings *settings, Plugins::PluginManager *pluginManager)
+MessageView::MessageView(QWidget *parent, QSettings *settings, Plugins::PluginManager *pluginManager,
+        Imap::Mailbox::FavoriteTagsModel *m_favoriteTags)
     : QWidget(parent)
     , m_stack(new QStackedLayout(this))
     , messageModel(0)
@@ -86,6 +87,14 @@ MessageView::MessageView(QWidget *parent, QSettings *settings, Plugins::PluginMa
     addAction(m_zoomOriginal);
     connect(m_zoomOriginal, &QAction::triggered, this, &MessageView::zoomOriginal);
 
+    m_findAction = new QAction(UiUtils::loadIcon(QStringLiteral("edit-find")), tr("Search..."), this);
+    m_findAction->setShortcut(tr("Ctrl+F"));
+    // We can search only in one part of the message at a time. If searching is initiated by shortcut,
+    // there is no better solution than ask Part Widgets in visible order to handle this request. A
+    // callback method called MessageView::triggerSearchDialogBy is provided for this purpose.
+    // Other parts are searchable via the context menu only.
+    connect(m_findAction, &QAction::triggered, this, &MessageView::searchDialogRequested);
+    addAction(m_findAction);
 
     // The homepage widget -- our poor man's splashscreen
     m_homePage = new EmbeddedWebView(this, new QNetworkAccessManager(this));
@@ -105,7 +114,7 @@ MessageView::MessageView(QWidget *parent, QSettings *settings, Plugins::PluginMa
     m_envelope = new EnvelopeView(m_messageWidget, this);
     fullMsgLayout->addWidget(m_envelope, 1);
 
-    tags = new TagListWidget(m_messageWidget);
+    tags = new TagListWidget(m_messageWidget, m_favoriteTags);
     connect(tags, &TagListWidget::tagAdded, this, &MessageView::newLabelAction);
     connect(tags, &TagListWidget::tagRemoved, this, &MessageView::deleteLabelAction);
     fullMsgLayout->addWidget(tags, 3);
@@ -371,6 +380,7 @@ void MessageView::METHOD() \
 FORWARD_METHOD(zoomIn)
 FORWARD_METHOD(zoomOut)
 FORWARD_METHOD(zoomOriginal)
+FORWARD_METHOD(searchDialogRequested)
 
 void MessageView::setNetworkWatcher(Imap::Mailbox::NetworkWatcher *netWatcher)
 {
@@ -478,11 +488,6 @@ void MessageView::partLinkHovered(const QString &link, const QString &title, con
     emit linkHovered(link);
 }
 
-void MessageView::triggerSearchDialog()
-{
-    emit searchRequestedBy(qobject_cast<EmbeddedWebView*>(sender()));
-}
-
 QModelIndex MessageView::currentMessage() const
 {
     return message;
@@ -512,5 +517,11 @@ Plugins::PluginManager *MessageView::pluginManager() const
 {
     return m_pluginManager;
 }
+
+/** @short Callback for AbstractPartWidget */
+void MessageView::triggerSearchDialogBy(EmbeddedWebView *w)
+{
+    emit searchRequestedBy(w);
+};
 
 }

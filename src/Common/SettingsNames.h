@@ -30,16 +30,19 @@ namespace Common
 
 struct SettingsNames {
     static const QString identitiesKey, realNameKey, addressKey, organisationKey, signatureKey, obsRealNameKey, obsAddressKey;
+    static const QString favoriteTagsKey, tagNameKey, tagColorKey;
     static const QString msaMethodKey, methodSMTP, methodSSMTP, methodSENDMAIL, methodImapSendmail, smtpHostKey,
            smtpPortKey, smtpAuthKey, smtpStartTlsKey, smtpUserKey, smtpAuthReuseImapCredsKey,
            sendmailKey, sendmailDefaultCmd;
     static const QString imapMethodKey, methodTCP, methodSSL, methodProcess, imapHostKey,
            imapPortKey, imapStartTlsKey, imapUserKey, imapProcessKey, imapStartMode, netOffline, netExpensive, netOnline,
            obsImapStartOffline, obsImapSslPemCertificate, imapSslPemPubKey,
-           imapBlacklistedCapabilities, imapUseSystemProxy, imapNeedsNetwork, imapNumberRefreshInterval;
+           imapBlacklistedCapabilities, imapUseSystemProxy, imapNeedsNetwork, imapNumberRefreshInterval,
+           imapAccountIcon, imapArchiveFolderName, imapDefaultArchiveFolderName;
     static const QString composerSaveToImapKey, composerImapSentKey, smtpUseBurlKey;
     static const QString cacheMetadataKey, cacheMetadataMemory,
            cacheOfflineKey, cacheOfflineNone, cacheOfflineXDays, cacheOfflineAll, cacheOfflineNumberDaysKey;
+    static const QString watchedFoldersKey, watchOnlyInbox, watchSubscribed, watchAll;
     static const QString xtConnectCacheDirectory, xtSyncMailboxList, xtDbHost, xtDbPort,
            xtDbDbName, xtDbUser;
     static const QString guiMsgListShowThreading;
@@ -57,6 +60,7 @@ struct SettingsNames {
     static const QString imapIdleRenewal;
     static const QString autoMarkReadEnabled, autoMarkReadSeconds;
     static const QString interopRevealVersions;
+    static const QString completeMessageWidgetGeometry;
 };
 
 }
