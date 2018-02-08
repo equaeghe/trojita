@@ -30,7 +30,7 @@ class QLabel;
 class QMenu;
 class QNetworkReply;
 class QPushButton;
-class QTemporaryFile;
+class QFile;
 class QToolButton;
 
 namespace Imap
@@ -100,7 +100,7 @@ private:
 
     Imap::Network::MsgPartNetAccessManager *m_netAccess;
 
-    QTemporaryFile *m_tmpFile;
+    QFile *m_tmpFile;
     QWidget *m_contentWidget;
 
     QPoint m_dragStartPos;

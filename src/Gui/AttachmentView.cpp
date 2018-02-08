@@ -24,6 +24,7 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QDrag>
+#include <QFile>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QMenu>
@@ -35,12 +36,13 @@
 #include <QLabel>
 #include <QStyle>
 #include <QStyleOption>
-#include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
 
 #include "Common/Paths.h"
 #include "Gui/MessageView.h" // so that the compiler knows it's a QObject
+#include "Gui/Util.h"
 #include "Gui/Window.h"
 #include "Imap/Network/FileDownloadManager.h"
 #include "Imap/Model/DragAndDrop.h"
@@ -216,7 +218,10 @@ void AttachmentView::slotOpenAttachment()
     connect(manager, &Imap::Network::FileDownloadManager::transferError, m_messageView, &MessageView::transferError);
     connect(manager, &Imap::Network::FileDownloadManager::transferError, this, &AttachmentView::onOpenFailed);
     connect(manager, &Imap::Network::FileDownloadManager::transferError, manager, &QObject::deleteLater);
-    // we aren't connecting to cancelled() as it cannot really happen -- the filename is never empty
+    /* TODO: begin to modify */
+    connect(manager, &Imap::Network::FileDownloadManager::cancelled, this, &AttachmentView::enableDownloadAgain);
+    connect(manager, &Imap::Network::FileDownloadManager::cancelled, manager, &QObject::deleteLater);
+    /* TODO: end to modify */
     connect(manager, &Imap::Network::FileDownloadManager::succeeded, this, &AttachmentView::openDownloadedAttachment);
     connect(manager, &Imap::Network::FileDownloadManager::succeeded, manager, &QObject::deleteLater);
     manager->downloadPart();
@@ -225,11 +230,25 @@ void AttachmentView::slotOpenAttachment()
 void AttachmentView::slotFileNameRequestedOnOpen(QString *fileName)
 {
     Q_ASSERT(!m_tmpFile);
-    m_tmpFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/trojita-attachment-XXXXXX-") +
-                                   fileName->replace(QLatin1Char('/'), QLatin1Char('_')));
-    m_tmpFile->setAutoRemove(false);
-    m_tmpFile->open();
-    *fileName = m_tmpFile->fileName();
+    QTemporaryDir dir(QDir::tempPath() + QLatin1String("/trojita-attachment-XXXXXX"));
+        /* We create a unique directory for each file request, so even for the same attachment opened twice.
+           Were we to use, e.g., a unique directory per session or per mail, we run the risk of overwriting
+           one file with another with the same filename. Also, reusing the tempdir makes it easy for other
+           processes to know where we may write in the future, causing security issues. */
+    if (dir.isValid()) {
+        dir.setAutoRemove(false);
+        QString name(fileName->isEmpty() ? tr("anonymous_file") : fileName->replace(QLatin1Char('/'), QLatin1Char('_')));
+        m_tmpFile = new QFile(dir.path() + QLatin1Char('/') + name);
+        m_tmpFile->open(QIODevice::ReadWrite);
+        *fileName = m_tmpFile->fileName();
+    } else {
+        QString message(tr("The temporary directory for attachment handling could not be created or used."));
+#if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)
+        message += QLatin1Char(' ') + tr("The reason given is:\n\n%1").arg(dir.errorString());
+#endif
+        Gui::Util::messageBoxCritical(this, tr("Invalid Temporary Directory"), message);
+        /* Can you please make this go via the Imap::Network::FileDownloadManager::cancelled signal as I previously suggested? That way, the behavior is symmetric to what slotFileNameRequested() does. It will require changing that (now misleading) comment on line 214 to connect to I::n::FDM::cancelled, similarly to what slotDownloadAttachment() is doing. */
+    }
 }
 
 void AttachmentView::slotFileNameRequested(QString *fileName)
