@@ -59,8 +59,14 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
+
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
+#include <QRegularExpressionMatchIterator>
+#include <QTextCodec>
+
 #include "Encoders.h"
-#include "Parser/3rdparty/rfccodecs.h"
+//#include "Parser/3rdparty/rfccodecs.h"
 #include "Parser/3rdparty/kcodecs.h"
 
 namespace {
@@ -442,14 +448,49 @@ QString decodeRFC2047String( const QByteArray& raw )
     return ::decodeWordSequence( raw );
 }
 
+/** @short Encode the given folder name string into modified UTF-7 (see RFC3501, Sec. 5.1.3) */
 QByteArray encodeImapFolderName(const QString &text)
 {
-    return KIMAP::encodeImapFolderName(text);
+    QRegularExpression re(QLatin1String("[^[:print:]]++"));  // possessively capture non-(printable ASCII) segments, which must be encoded in modified base64 /* TODO: make more global? Need multiline support? */
+    QTextCodec *utf16be = QTextCodec::codecForName("UTF-16BE"); /* TODO: make more global? */
+    QRegularExpressionMatchIterator i = re.globalMatch(text);
+    QString s;
+    int previous_end = 0;
+    while (i.hasNext()) { // replace non-(printable ASCII) segments with delimited encoded versions
+        QRegularExpressionMatch match = i.next();
+        s.append(text.mid(previous_end, match.capturedStart() - previous_end).replace(QLatin1String("&"), QLatin1String("&-")));  // append preceding printable-ASCII segment
+            // ampersands must be ‘escaped’ as they will delimit modified base64 segments together with a hyphen
+        QByteArray utf16 = utf16be->fromUnicode(match.captured()).mid(2); // transform to utf16, but remove BOM
+        QByteArray base64 = utf16.toBase64(QByteArray::OmitTrailingEquals).replace('/', ','); // base64, modified variant must be used!
+        s.append(QLatin1String("&") + QString::fromLatin1(base64) + QLatin1String("-"));
+        previous_end = match.capturedEnd();
+    }
+    s.append(text.mid(previous_end).replace(QLatin1String("&"), QLatin1String("&-")));  // append final printable-ASCII segment
+    return s.toLatin1();
+    //return KIMAP::encodeImapFolderName(text);
 }
 
+/** @short Decode the given folder name string from modified UTF-7 (see RFC3501, Sec. 5.1.3) */
 QString decodeImapFolderName(const QByteArray &raw)
 {
-    return KIMAP::decodeImapFolderName(raw);
+    QString raw_text = QString::fromLatin1(raw);
+    QRegularExpression re(QLatin1String("&([[:alnum:]+,]++)-")); // possessively capture strings of modified base64 characters between modified utf7 delimiters  /* TODO: make more global? Need multiline support? */
+    QTextCodec *utf16be = QTextCodec::codecForName("UTF-16BE"); /* TODO: make more global? */
+    QRegularExpressionMatchIterator i = re.globalMatch(raw_text);
+    QString s;
+    int previous_end = 0;
+    while (i.hasNext()) { // replace base64 segments with delimited encoded versions
+        QRegularExpressionMatch match = i.next();
+        s.append(raw_text.mid(previous_end, match.capturedStart() - previous_end));  // append preceding unencoded printable-ASCII segment
+        QByteArray base64 = match.captured(1).toLatin1().replace(',', '/'); // base64, modified variant was used!
+        QByteArray utf16 = QByteArray::fromBase64(base64);
+        QString unencoded = utf16be->toUnicode(utf16);
+        s.append(unencoded);
+        previous_end = match.capturedEnd();
+    }
+    s.append(raw_text.mid(previous_end));  // append final unencoded printable-ASCII segment
+    return s.replace(QLatin1String("&-"), QLatin1String("&")); // ampersands must be ‘unescaped’
+    //return KIMAP::decodeImapFolderName(raw);
 }
 
 QByteArray quotedPrintableDecode( const QByteArray& raw )
