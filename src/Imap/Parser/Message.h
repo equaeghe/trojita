@@ -54,20 +54,20 @@ class Envelope {
 public:
     QDateTime date;
     QString subject;
-    QList<MailAddress> from;
-    QList<MailAddress> sender;
-    QList<MailAddress> replyTo;
-    QList<MailAddress> to;
-    QList<MailAddress> cc;
-    QList<MailAddress> bcc;
+    QList<AddressOrGroup> from;
+    QList<AddressOrGroup> sender;
+    QList<AddressOrGroup> replyTo;
+    QList<AddressOrGroup> to;
+    QList<AddressOrGroup> cc;
+    QList<AddressOrGroup> bcc;
     QList<QByteArray> inReplyTo;
     QByteArray messageId;
 
     Envelope() {}
-    Envelope(const QDateTime &date, const QString &subject, const QList<MailAddress> &from,
-             const QList<MailAddress> &sender, const QList<MailAddress> &replyTo,
-             const QList<MailAddress> &to, const QList<MailAddress> &cc,
-             const QList<MailAddress> &bcc, const QList<QByteArray> &inReplyTo,
+    Envelope(const QDateTime &date, const QString &subject, const QList<AddressOrGroup> &from,
+             const QList<AddressOrGroup> &sender, const QList<AddressOrGroup> &replyTo,
+             const QList<AddressOrGroup> &to, const QList<AddressOrGroup> &cc,
+             const QList<AddressOrGroup> &bcc, const QList<QByteArray> &inReplyTo,
              const QByteArray &messageId):
         date(date), subject(subject), from(from), sender(sender), replyTo(replyTo),
         to(to), cc(cc), bcc(bcc), inReplyTo(inReplyTo), messageId(messageId) {}
@@ -77,7 +77,7 @@ public:
     void clear();
 
 private:
-    static QList<MailAddress> getListOfAddresses(const QVariant &in,
+    static QList<AddressOrGroup> getListOfAddresses(const QVariant &in,
             const QByteArray &line, const int start);
     friend class Fetch;
 };

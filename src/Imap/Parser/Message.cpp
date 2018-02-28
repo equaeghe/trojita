@@ -40,7 +40,7 @@ namespace Message
 /* A simple regexp to match an address typed into the input field. */
 static QRegExp mailishRx(QLatin1String("(?:\\b|\\<)([\\w_.-+]+)\\s*\\@\\s*([\\w_.-]+|(?:\\[[^][\\\\\\\"\\s]+\\]))(?:\\b|\\>)"));
 
-QList<MailAddress> Envelope::getListOfAddresses(const QVariant &in, const QByteArray &line, const int start)
+QList<AddressOrGroup> Envelope::getListOfAddresses(const QVariant &in, const QByteArray &line, const int start)
 {
     if (in.type() == QVariant::ByteArray) {
         if (! in.toByteArray().isNull())
@@ -50,7 +50,7 @@ QList<MailAddress> Envelope::getListOfAddresses(const QVariant &in, const QByteA
     }
 
     QVariantList list = in.toList();
-    QList<MailAddress> res;
+    QList<AddressOrGroup> res;
     for (QVariantList::const_iterator it = list.constBegin(); it != list.constEnd(); ++it) {
         if (it->type() != QVariant::List)
             throw UnexpectedHere("getListOfAddresses: split item not a list", line, start);   // FIXME: wrong offset
@@ -81,7 +81,7 @@ Envelope Envelope::fromList(const QVariantList &items, const QByteArray &line, c
 
     QString subject = Imap::decodeRFC2047String(items[1].toByteArray());
 
-    QList<MailAddress> from, sender, replyTo, to, cc, bcc;
+    QList<AddressOrGroup> from, sender, replyTo, to, cc, bcc;
     from = Envelope::getListOfAddresses(items[2], line, start);
     sender = Envelope::getListOfAddresses(items[3], line, start);
     replyTo = Envelope::getListOfAddresses(items[4], line, start);
@@ -673,7 +673,7 @@ QSharedPointer<AbstractMessage> AbstractMessage::fromList(const QVariantList &it
     }
 }
 
-void dumpListOfAddresses(QTextStream &stream, const QList<MailAddress> &list, const int indent)
+void dumpListOfAddresses(QTextStream &stream, const QList<AddressOrGroup> &list, const int indent)
 {
     QByteArray lf("\n");
     switch (list.size()) {

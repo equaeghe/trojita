@@ -133,6 +133,19 @@ public:
     result_type operator()(const MailAddress &a, const MailAddress &b) const;
 };
 
+/** @short Storage container for an address group from an envelope */
+struct Group {
+    QString name;
+    QList<MailAddress> addresses;
+};
+
+/** @short Storage container for either a single address or a group */
+union AddressOrGroup {
+    MailAddress address;
+    Group group;
+};
+
+
 }
 
 }
