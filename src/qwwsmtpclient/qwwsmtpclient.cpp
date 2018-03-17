@@ -13,6 +13,8 @@
 #include <QSslSocket>
 #include <QtDebug>
 #include <QRegularExpression>
+#include <QRegularExpressionMatch>
+#include <QRegularExpressionMatchIterator>
 #include <QQueue>
 #include <QVariant>
 #include <QStringList>
@@ -56,7 +58,7 @@ struct SMTPCommand {
     int id;
     Type type;
     QVariant data;
-    QVariant extra;
+    int extra;
 };
 
 class QwwSmtpClientPrivate {
@@ -68,7 +70,7 @@ public:
 
     QwwSmtpClient::State state;
     void setState(QwwSmtpClient::State s);
-    void parseOption(const QString &buffer);
+    void parseOption(const QStringList &texts);
 
     void onConnected();
     void onDisconnected();
@@ -137,8 +139,7 @@ void QwwSmtpClientPrivate::onDisconnected() {
     emit q->done(false);
 }
 
-void QwwSmtpClientPrivate::onError(QAbstractSocket::SocketError e)
-{
+void QwwSmtpClientPrivate::onError(QAbstractSocket::SocketError e) {
     emit q->socketError(e, socket->errorString());
     onDisconnected();
 }
@@ -146,220 +147,202 @@ void QwwSmtpClientPrivate::onError(QAbstractSocket::SocketError e)
 // main logic of the component - a slot triggered upon data entering the socket
 // comments inline...
 void QwwSmtpClientPrivate::_q_readFromSocket() {
-    while (socket->canReadLine()) {
-        QString line = socket->readLine();
-        emit q->logReceived(line.toUtf8());
-        QRegularExpression rx("(*ANYCRLF)^(\\d+)-(.*)$", QRegularExpression::MultilineOption);        // multiline response (aka 250-XYZ)
-        QRegularExpression rxlast("(*ANYCRLF)^(\\d+) (.*)$", QRegularExpression::MultilineOption);    // single or last line response (aka 250 XYZ)
-        // multiline
-        QRegularExpressionMatch mid_match = rx.match(line);
-        if (mid_match.hasMatch()) {
-            int status = mid_match.captured(1).toInt();
-            SMTPCommand &cmd = commandqueue.head();
-            switch (cmd.type) {
-            // trying to connect
-            case SMTPCommand::Connect: {
-                    int stage = cmd.extra.toInt();
-                    // stage 0 completed with success - socket is connected and EHLO was sent
-                    if(stage==1 && status==250){
-                        QString arg = mid_match.captured(2).trimmed();
-                        parseOption(arg);   // we're probably receiving options
-                    }
-                }
+    QByteArray raw_response = socket->readAll();
+    emit q->logReceived(raw_response);
+
+    static const QRegularExpression rx("(*ANYCRLF)^(\\d+)( |-)(.*)$", QRegularExpression::MultilineOption);
+                // multiline response (e.g., 250-XYZ), single or last line response (e.g., 250 XYZ)
+    QRegularExpressionMatchIterator i = rx.globalMatch(QString(raw_response));
+    if (!i.hasNext())
+        qDebug() << "All response lines from SMTP server malformed: " << QString(raw_response); // TODO: does this stream accept multiline text?
+    QList<QPair<int, QStringList>> responses({{i.peekNext().captured(1).toInt(), QStringList()}});
+                                                               // [(status code, [response lines text])]
+    QRegularExpressionMatch match;
+    bool new_status(false);
+    int k = 0;
+    do {
+        if (new_status) { // last line response
+            ++k;
+            responses[k].first = i.peekNext().captured(1).toInt();
+        }
+        match = i.next();
+        responses[k].second << match.captured(3).trimmed();
+        new_status = (match.captured(2).at(0).toLatin1() == ' ');
+    } while (i.hasNext());
+
+    for (auto i = responses.constBegin(); i != responses.constEnd(); ++i) {
+        SMTPCommand &cmd = commandqueue.head();
+        int status = i->first + cmd.extra * 1000; // xyyy with x = stage and yyy status code
+        QStringList texts = i->second;
+
+        switch (cmd.type) {
+        // trying to connect
+        case SMTPCommand::Connect:
+            switch (status) {
+            case 0220: // connection established, server sent its banner
+                sendEhlo(); // connect ok, send ehlo
                 break;
-            // trying to establish deferred SSL handshake
-            case SMTPCommand::StartTLS: {
-                    int stage = cmd.extra.toInt();
-                    // stage 0 (negotiation) completed ok
-                    if(stage==1 && status==250){
-                        QString arg = mid_match.captured(2).trimmed();
-                        parseOption(arg);   // we're probably receiving options
-                    }
-                }
-                default: break;
+            case 1250: // server responded to EHLO
+                parseOption(texts); // we're probably receiving options
+                // [[fallthrough]]; // TODO: uncomment when minimal version is C++17
+            case 2250: // server responded to HELO
+                errorString.clear();
+                setState(QwwSmtpClient::Connected);
+                processNextCommand();
+                break;
+            case 1421:
+            case 1501:
+            case 1502:
+            case 1554:
+                // EHLO failed, reason given in errorString
+                errorString = texts.join(QLatin1Char('\n'));
+                sendHelo(); // EHLO failed, send HELO
+                cmd.extra = 2;
+                break;
             }
-        } else {
-            // single line
-            QRegularExpressionMatch last_match = rxlast.match(line);
-            if (last_match.hasMatch()) {
-                int status = last_match.captured(1).toInt();
-                SMTPCommand &cmd = commandqueue.head();
-                switch (cmd.type) {
-                // trying to connect
-                case SMTPCommand::Connect: {
-                    int stage = cmd.extra.toInt();
-                    // connection established, server sent its banner
-                    if (stage==0 && status==220) {
-                        sendEhlo(); // connect ok, send ehlo
-                    }
-                    // server responded to EHLO
-                    if (stage==1 && status==250){
-                        // success (EHLO)
-                        parseOption(last_match.captured(2).trimmed()); // we're probably receiving the last option
-                        errorString.clear();
-                        setState(QwwSmtpClient::Connected);
-                        processNextCommand();
-                    }
-                    // server responded to HELO (EHLO failed)
-                    if (stage==2 && status==250) {
-                        // success (HELO)
-                        errorString.clear();
-                        setState(QwwSmtpClient::Connected);
-                        processNextCommand();
-                    }
-                    // EHLO failed, reason given in errorString
-                    if (stage==1 && (status==554 || status==501 || status==502 || status==421)) {
-                        errorString = last_match.captured(2).trimmed();
-                        sendHelo(); // ehlo failed, send helo
-                        cmd.extra = 2;
-                    }
-                    //abortDialog();
-                }
+            break;
+        // trying to establish a delayed SSL handshake
+        case SMTPCommand::StartTLS:
+            switch (status) {
+            case 0220: // received an invitation from the server to enter TLS mode
+                emit q->logSent("*** startClientEncryption");
+                socket->startClientEncryption();
                 break;
-                // trying to establish a delayed SSL handshake
-                case SMTPCommand::StartTLS: {
-                    int stage = cmd.extra.toInt();
-                    // received an invitation from the server to enter TLS mode
-                    if (stage==0 && status==220) {
-                        emit q->logSent("*** startClientEncryption");
-                        socket->startClientEncryption();
-                    }
-                    // TLS established, connection is encrypted, EHLO was sent
-                    else if (stage==1 && status==250) {
-                        setState(QwwSmtpClient::Connected);
-                        parseOption(last_match.captured(2).trimmed());   // we're probably receiving options
-                        errorString.clear();
-                        emit q->tlsStarted();
-                        processNextCommand();
-                    }
-                    // starttls failed
-                    else {
-                        emit q->logReceived(QByteArrayLiteral("*** TLS failed at stage ") + QByteArray::number(stage) + ": " + line.toUtf8());
-                        errorString = "TLS failed";
-                        emit q->done(false);
-                    }
-                }
+            case 1250: // TLS established, connection is encrypted, EHLO was sent
+                setState(QwwSmtpClient::Connected);
+                parseOption(texts);   // we're probably receiving options
+                errorString.clear();
+                emit q->tlsStarted();
+                processNextCommand();
                 break;
-                // trying to authenticate the client to the server
-                case SMTPCommand::Authenticate: {
-                    int stage = cmd.extra.toInt();
-                    if (stage==0 && status==334) {
-                        // AUTH mode was accepted by the server, 1st challenge sent
-                        QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
-                        errorString.clear();
-                        switch (authmode) {
-                        case QwwSmtpClient::AuthPlain:
-                            sendAuthPlain(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString());
-                            break;
-                        case QwwSmtpClient::AuthLogin:
-                            sendAuthLogin(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString(), 1);
-                            break;
-                        default:
-                            qWarning("I shouldn't be here");
-                            setState(QwwSmtpClient::Connected);
-                            processNextCommand();
-                            break;
-                        }
-                        cmd.extra = stage+1;
-                    } else if (stage==1 && status==334) {
-                        // AUTH mode and user names were acccepted by the server, 2nd challenge sent
-                        QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
-                        errorString.clear();
-                        switch (authmode) {
-                        case QwwSmtpClient::AuthPlain:
-                            // auth failed
-                            setState(QwwSmtpClient::Connected);
-                            processNextCommand();
-                            break;
-                        case QwwSmtpClient::AuthLogin:
-                            sendAuthLogin(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString(), 2);
-                            break;
-                        default:
-                            qWarning("I shouldn't be here");
-                            setState(QwwSmtpClient::Connected);
-                            processNextCommand();
-                            break;
-                        }
-                    } else if (stage==2 && status==334) {
-                        // auth failed
-                        errorString = last_match.captured(2).trimmed();
-                        setState(QwwSmtpClient::Connected);
-                        processNextCommand();
-                    } else if (status==235) {
-                        // auth ok
-                        errorString.clear();
-                        emit q->authenticated();
-                        setState(QwwSmtpClient::Connected);
-                        processNextCommand();
-                    } else {
-                        errorString = last_match.captured(2).trimmed();
-                        setState(QwwSmtpClient::Connected);
-                        emit q->done(false);
-                    }
-                }
+            default: // starttls failed
+                emit q->logReceived(QByteArrayLiteral("*** TLS failed at stage ") +
+                                    QByteArray::number(cmd.extra) + ": " + raw_response);
+                errorString = "TLS failed";
+                emit q->done(false);
                 break;
-                // trying to send mail
-                case SMTPCommand::Mail:
-                case SMTPCommand::MailBurl:
-                {
-                    int stage = cmd.extra.toInt();
-                    // temporary failure upon receiving the sender address (greylisting probably)
-                    if (status==421 && stage==0) {
-                        errorString = last_match.captured(2).trimmed();
-                        // temporary envelope failure (greylisting)
-                        setState(QwwSmtpClient::Connected);
-                        processNextCommand(false);
-                    }
-                    if (status==250 && stage==0) {
-                        // sender accepted
-                        errorString.clear();
-                        sendRcpt();
-                    } else if (status==250 && stage==1) {
-                        // all receivers accepted
-                        if (cmd.type == SMTPCommand::MailBurl) {
-                            errorString.clear();
-                            QByteArray url = cmd.data.toList().at(2).toByteArray();
-                            auto data = "BURL " + url + " LAST\r\n";
-                            emit q->logSent(data);
-                            socket->write(data);
-                            cmd.extra=2;
-                        } else {
-                            errorString.clear();
-                            QByteArray data("DATA\r\n");
-                            emit q->logSent(data);
-                            socket->write(data);
-                            cmd.extra=2;
-                        }
-                    } else if ((cmd.type == SMTPCommand::Mail && status==354 && stage==2)) {
-                        // DATA command accepted
-                        errorString.clear();
-                        QByteArray toBeWritten = cmd.data.toList().at(2).toByteArray() + "\r\n.\r\n"; // termination token - CRLF.CRLF
-                        emit q->logSent(toBeWritten);
-                        socket->write(toBeWritten); // expecting data to be already escaped (CRLF.CRLF)
-                        cmd.extra=3;
-                    } else if ((cmd.type == SMTPCommand::MailBurl && status==250 && stage==2)) {
-                        // BURL succeeded
-                        setState(QwwSmtpClient::Connected);
-                        errorString.clear();
-                        processNextCommand();
-                    } else if ((cmd.type == SMTPCommand::Mail && status==250 && stage==3)) {
-                        // mail queued
-                        setState(QwwSmtpClient::Connected);
-                        errorString.clear();
-                        processNextCommand();
-                    } else {
-                        // something went wrong
-                        errorString = last_match.captured(2).trimmed();
-                        setState(QwwSmtpClient::Connected);
-                        emit q->done(false);
-                        processNextCommand();
-                    }
-                }
-                    default: break;
-                }
-            } else {
-                qDebug() << "None of two regular expressions matched the input" << line;
             }
+            break;
+        // trying to authenticate the client to the server
+        case SMTPCommand::Authenticate:
+            switch (status) {
+            case 0235:
+            case 1235:
+            case 2235:
+                // auth ok
+                errorString.clear();
+                emit q->authenticated();
+                setState(QwwSmtpClient::Connected);
+                processNextCommand();
+                break;
+            case 0334: // AUTH mode was accepted by the server, 1st challenge sent
+                errorString.clear();
+                { // contain local variable ‘authmode’
+                    QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
+                    switch (authmode) {
+                    case QwwSmtpClient::AuthPlain:
+                        sendAuthPlain(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString());
+                        break;
+                    case QwwSmtpClient::AuthLogin:
+                        sendAuthLogin(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString(), cmd.extra + 1);
+                        break;
+                    default:
+                        qWarning("I shouldn't be here");
+                        setState(QwwSmtpClient::Connected);
+                        processNextCommand();
+                        break;
+                    }
+                }
+                cmd.extra += 1;
+                break;
+            case 1334: // AUTH mode and user names were accepted by the server, 2nd challenge sent
+                errorString.clear();
+                { // contain local variable ‘authmode’
+                    QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
+                    switch (authmode) {
+                    case QwwSmtpClient::AuthPlain: // auth failed
+                        setState(QwwSmtpClient::Connected);
+                        processNextCommand();
+                        break;
+                    case QwwSmtpClient::AuthLogin:
+                        sendAuthLogin(cmd.data.toList().at(1).toString(), cmd.data.toList().at(2).toString(), cmd.extra + 1);
+                        break;
+                    default:
+                        qWarning("I shouldn't be here");
+                        setState(QwwSmtpClient::Connected);
+                        processNextCommand();
+                        break;
+                    }
+                }
+                break;
+            case 2334: // auth failed
+                errorString = texts.join(QLatin1Char('\n'));
+                setState(QwwSmtpClient::Connected);
+                processNextCommand();
+                break;
+            default:
+                errorString = texts.join(QLatin1Char('\n'));
+                setState(QwwSmtpClient::Connected);
+                emit q->done(false);
+                break;
+            }
+            break;
+        // trying to send mail
+        // TODO: the two cases with/without BURL are currently mixed inelegantly
+        case SMTPCommand::Mail:
+        case SMTPCommand::MailBurl:
+            switch (status) {
+            case 0250: // sender accepted
+                errorString.clear();
+                sendRcpt();
+                break;
+            case 0421: // temporary envelope failure (greylisting probably)
+                errorString = texts.join(QLatin1Char('\n'));
+                setState(QwwSmtpClient::Connected);
+                processNextCommand(false);
+                break;
+            case 1250: // all receivers accepted
+                errorString.clear();
+                { // contain local variable ‘data’
+                    QByteArray data;
+                    if (cmd.type == SMTPCommand::MailBurl) {
+                        QByteArray url = cmd.data.toList().at(2).toByteArray();
+                        data = "BURL " + url + " LAST\r\n";
+                    } else
+                        data = "DATA\r\n";
+                    emit q->logSent(data);
+                    socket->write(data);
+                }
+                cmd.extra = 2;
+                break;
+            case 2250: // BURL succeeded
+                // [[fallthrough]]; // TODO: uncomment when minimal version is C++17
+            case 3250: // mail queued
+                errorString.clear();
+                setState(QwwSmtpClient::Connected);
+                processNextCommand();
+                break;
+            case 2354:
+                if (cmd.type == SMTPCommand::Mail) { // DATA command accepted
+                    errorString.clear();
+                    QByteArray toBeWritten = cmd.data.toList().at(2).toByteArray() + "\r\n.\r\n"; // termination token - CRLF.CRLF
+                    emit q->logSent(toBeWritten);
+                    socket->write(toBeWritten); // expecting data to be already escaped (CRLF.CRLF)
+                    cmd.extra = 3;
+                    break;
+                }
+                // [[fallthrough]]; // TODO: uncomment when minimal version is C++17
+            default: // something went wrong
+                errorString = texts.join(QLatin1Char('\n'));
+                setState(QwwSmtpClient::Connected);
+                emit q->done(false);
+                processNextCommand();
+                break;
+            }
+            break;
+        // not explicitly handled SMTPCommand Types
+        default:
+            break;
         }
     }
 }
@@ -384,98 +367,101 @@ void QwwSmtpClientPrivate::processNextCommand(bool ok) {
     }
     SMTPCommand &cmd = commandqueue.head();
     switch (cmd.type) {
-    case SMTPCommand::Connect: {
-        QString hostName = cmd.data.toList().at(0).toString();
-        uint port = cmd.data.toList().at(1).toUInt();
-        bool ssl = cmd.data.toList().at(2).toBool();
-        if(ssl){
-            emit q->logSent(QByteArrayLiteral("*** connectToHostEncrypted: ") + hostName.toUtf8() + ':' + QByteArray::number(port));
-            socket->connectToHostEncrypted(hostName, port);
-        } else {
-            emit q->logSent(QByteArrayLiteral("*** connectToHost: ") + hostName.toUtf8() + ':' + QByteArray::number(port));
-            socket->connectToHost(hostName, port);
+    case SMTPCommand::Connect:
+        { // contain local variables ‘hostName’, ‘port’, ‘ssl’
+            QString hostName = cmd.data.toList().at(0).toString();
+            uint port = cmd.data.toList().at(1).toUInt();
+            bool ssl = cmd.data.toList().at(2).toBool();
+            if(ssl){
+                emit q->logSent(QByteArrayLiteral("*** connectToHostEncrypted: ") + hostName.toUtf8() + ':' + QByteArray::number(port));
+                socket->connectToHostEncrypted(hostName, port);
+            } else {
+                emit q->logSent(QByteArrayLiteral("*** connectToHost: ") + hostName.toUtf8() + ':' + QByteArray::number(port));
+                socket->connectToHost(hostName, port);
+            }
         }
         setState(QwwSmtpClient::Connecting);
-    }
-    break;
-    case SMTPCommand::Disconnect: {
+        break;
+    case SMTPCommand::Disconnect:
         sendQuit();
-    }
-    break;
-    case SMTPCommand::StartTLS: {
-        QByteArray data("STARTTLS\r\n");
-        emit q->logSent(data);
-        socket->write(data);
+        break;
+    case SMTPCommand::StartTLS:
+        { // contain local variable ‘data’
+            QByteArray data("STARTTLS\r\n");
+            emit q->logSent(data);
+            socket->write(data);
+        }
         setState(QwwSmtpClient::TLSRequested);
-    }
-    break;
-    case SMTPCommand::Authenticate: {
-        QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
-
-        if (authmode == QwwSmtpClient::AuthAny){
-            bool modified = false;
-            if (authModes.testFlag(QwwSmtpClient::AuthPlain)) {
-                authmode = QwwSmtpClient::AuthPlain;
-                modified = true;
-            } else if (authModes.testFlag(QwwSmtpClient::AuthLogin)) {
-                authmode = QwwSmtpClient::AuthLogin;
-                modified = true;
+        break;
+    case SMTPCommand::Authenticate:
+        { // contain local variable ‘authmode’
+            QwwSmtpClient::AuthMode authmode = (QwwSmtpClient::AuthMode)cmd.data.toList().at(0).toInt();
+            if (authmode == QwwSmtpClient::AuthAny) {
+                bool modified = false;
+                if (authModes.testFlag(QwwSmtpClient::AuthPlain)) {
+                    authmode = QwwSmtpClient::AuthPlain;
+                    modified = true;
+                } else if (authModes.testFlag(QwwSmtpClient::AuthLogin)) {
+                    authmode = QwwSmtpClient::AuthLogin;
+                    modified = true;
+                }
+                if (modified) {
+                    QVariantList data = cmd.data.toList();
+                    data[0] = (int)authmode;
+                    cmd.data = data;
+                }
             }
-            if (modified) {
-                QVariantList data = cmd.data.toList();
-                data[0] = (int)authmode;
-                cmd.data = data;
+            switch (authmode) {
+            case QwwSmtpClient::AuthPlain:
+                { // contain local variable ‘buf’
+                    QByteArray buf("AUTH PLAIN\r\n");
+                    emit q->logSent(buf);
+                    socket->write(buf);
+                }
+                setState(QwwSmtpClient::Authenticating);
+                break;
+            case QwwSmtpClient::AuthLogin:
+                { // contain local variable ‘buf’
+                    QByteArray buf("AUTH LOGIN\r\n");
+                    emit q->logSent(buf);
+                    socket->write(buf);
+                }
+                setState(QwwSmtpClient::Authenticating);
+                break;
+            default:
+                errorString = QwwSmtpClient::tr("Unsupported or unknown authentication scheme");
+                emit q->done(false);
+                break;
             }
         }
-
-        switch (authmode) {
-        case QwwSmtpClient::AuthPlain:
-        {
-            QByteArray buf("AUTH PLAIN\r\n");
-            emit q->logSent(buf);
-            socket->write(buf);
-            setState(QwwSmtpClient::Authenticating);
-            break;
-        }
-        case QwwSmtpClient::AuthLogin:
-        {
-            QByteArray buf("AUTH LOGIN\r\n");
-            emit q->logSent(buf);
-            socket->write(buf);
-            setState(QwwSmtpClient::Authenticating);
-            break;
-        }
-        default:
-            errorString = QwwSmtpClient::tr("Unsupported or unknown authentication scheme");
-            emit q->done(false);
-        }
-    }
-    break;
+        break;
     case SMTPCommand::Mail:
     case SMTPCommand::MailBurl:
-    {
         setState(QwwSmtpClient::Sending);
-        QByteArray buf = QByteArray("MAIL FROM:<").append(cmd.data.toList().at(0).toByteArray()).append(">\r\n");
-        emit q->logSent(buf);
-        socket->write(buf);
+        { // contain local variable ‘buf’
+            QByteArray buf = QByteArray("MAIL FROM:<").append(cmd.data.toList().at(0).toByteArray()).append(">\r\n");
+            emit q->logSent(buf);
+            socket->write(buf);
+        }
         break;
-    }
-    case SMTPCommand::RawCommand: {
-	QString cont = cmd.data.toString();
-	if(!cont.endsWith("\r\n")) cont.append("\r\n");
-    setState(QwwSmtpClient::Sending);
-    auto buf = cont.toUtf8();
-    emit q->logSent(buf);
-    socket->write(buf);
-	} break;
+    case SMTPCommand::RawCommand:
+        { // contain local variables ‘cont’ and ‘buf’
+            QString cont = cmd.data.toString();
+            if (!cont.endsWith("\r\n"))
+                cont.append("\r\n");
+            setState(QwwSmtpClient::Sending);
+            auto buf = cont.toUtf8();
+            emit q->logSent(buf);
+            socket->write(buf);
+        }
+        break;
     }
     inProgress = true;
     emit q->commandStarted(cmd.id);
 }
 
-void QwwSmtpClientPrivate::_q_encrypted() {
-        options = QwwSmtpClient::NoOptions;
-    // forget everything, restart ehlo
+void QwwSmtpClientPrivate::_q_encrypted() { // forget everything, restart ehlo
+    options = QwwSmtpClient::NoOptions;
 //    SMTPCommand &cmd = commandqueue.head();
     sendEhlo();
 }
@@ -525,7 +511,8 @@ void QwwSmtpClientPrivate::sendRcpt() {
     vlist[1] = rcptlist;
     cmd.data = vlist;
 
-    if (rcptlist.isEmpty()) cmd.extra = 1;
+    if (rcptlist.isEmpty())
+        cmd.extra = 1;
 }
 
 
@@ -543,32 +530,44 @@ void QwwSmtpClientPrivate::sendAuthPlain(const QString & username, const QString
 }
 
 void QwwSmtpClientPrivate::sendAuthLogin(const QString & username, const QString & password, int stage) {
-    if (stage==1) {
-        auto buf = username.toUtf8().toBase64() + "\r\n";
-        emit q->logSent(buf);
-        socket->write(buf);
-    } else if (stage==2) {
+    switch (stage) {
+    case 1:
+        { // contain local variable ‘buf’
+            auto buf = username.toUtf8().toBase64() + "\r\n";
+            emit q->logSent(buf);
+            socket->write(buf);
+        }
+        break;
+    case 2:
         emit q->logSent("*** [AUTH LOGIN password]");
         socket->write(password.toUtf8().toBase64());
         socket->write("\r\n");
+        break;
     }
 }
 
-void QwwSmtpClientPrivate::parseOption(const QString &buffer){
-    if(buffer.toLower()=="pipelining"){                     options |= QwwSmtpClient::PipeliningOption;     }
-    else if(buffer.toLower()=="starttls"){                  options |= QwwSmtpClient::StartTlsOption;       }
-    else if(buffer.toLower()=="8bitmime"){                  options |= QwwSmtpClient::EightBitMimeOption;   }
-    else if(buffer.toLower().startsWith("auth ")){          options |= QwwSmtpClient::AuthOption;
-        // parse auth modes
-        QStringList slist = buffer.mid(5).split(" ");
-        foreach(const QString &s, slist){
-            if(s.toLower()=="plain"){
-                authModes |= QwwSmtpClient::AuthPlain;
-            }
-            if(s.toLower()=="login"){
-                authModes |= QwwSmtpClient::AuthLogin;
-            }
-        }
+void QwwSmtpClientPrivate::parseOption(const QStringList &texts) {
+    // map string options to enum values
+    static const QMap<QString, QwwSmtpClient::Option> text2option({
+        {QStringLiteral("pipelining"), QwwSmtpClient::PipeliningOption},
+        {QStringLiteral("starttls"), QwwSmtpClient::StartTlsOption},
+        {QStringLiteral("8bitmime"), QwwSmtpClient::EightBitMimeOption},
+        {QStringLiteral("auth"), QwwSmtpClient::AuthOption}});
+    // map string authmodes to enum values
+    static const QMap<QString, QwwSmtpClient::AuthMode> text2authmode({
+        {QStringLiteral("plain"), QwwSmtpClient::AuthPlain},
+        {QStringLiteral("login"), QwwSmtpClient::AuthLogin}
+    });
+
+    foreach (const QString &text, texts) {
+        QStringList textparts = text.toLower().split(QLatin1Char(' '));
+        if (textparts.isEmpty())
+            continue;
+        QwwSmtpClient::Option option = text2option[textparts.takeFirst()];
+        options |= option;
+        if (option == QwwSmtpClient::AuthOption) // parse auth modes
+            foreach (const QString &s, textparts)
+                authModes |= text2authmode[s];
     }
 }
 
@@ -609,8 +608,7 @@ int QwwSmtpClient::connectToHost(const QString & hostName, quint16 port) {
 // }
 
 
-int QwwSmtpClient::connectToHostEncrypted(const QString & hostName, quint16 port)
-{
+int QwwSmtpClient::connectToHostEncrypted(const QString & hostName, quint16 port) {
     SMTPCommand cmd;
     cmd.type = SMTPCommand::Connect;
     cmd.data = QVariantList() << hostName << port << true;
@@ -662,12 +660,10 @@ int QwwSmtpClient::authenticate(const QString &user, const QString &password, Au
     return cmd.id;
 }
 
-int QwwSmtpClient::sendMail(const QByteArray &from, const QList<QByteArray> &to, const QByteArray &content)
-{
+int QwwSmtpClient::sendMail(const QByteArray &from, const QList<QByteArray> &to, const QByteArray &content) {
     QList<QVariant> rcpts;
-    for(QList<QByteArray>::const_iterator it = to.begin(); it != to.end(); it ++) {
+    for(QList<QByteArray>::const_iterator it = to.begin(); it != to.end(); it ++)
         rcpts.append(QVariant(*it));
-    }
     SMTPCommand cmd;
     cmd.type = SMTPCommand::Mail;
     cmd.data = QVariantList() << from << QVariant(rcpts) << content;
@@ -678,12 +674,10 @@ int QwwSmtpClient::sendMail(const QByteArray &from, const QList<QByteArray> &to,
     return cmd.id;
 }
 
-int QwwSmtpClient::sendMailBurl(const QByteArray &from, const QList<QByteArray> &to, const QByteArray &url)
-{
+int QwwSmtpClient::sendMailBurl(const QByteArray &from, const QList<QByteArray> &to, const QByteArray &url) {
     QList<QVariant> rcpts;
-    for(QList<QByteArray>::const_iterator it = to.begin(); it != to.end(); it ++) {
+    for(QList<QByteArray>::const_iterator it = to.begin(); it != to.end(); it ++)
         rcpts.append(QVariant(*it));
-    }
     SMTPCommand cmd;
     cmd.type = SMTPCommand::MailBurl;
     cmd.data = QVariantList() << from << QVariant(rcpts) << url;
@@ -712,19 +706,19 @@ void QwwSmtpClientPrivate::abortDialog() {
     sendQuit();
 }
 
-void QwwSmtpClient::ignoreSslErrors()
-{d->socket->ignoreSslErrors();
+void QwwSmtpClient::ignoreSslErrors() {
+    d->socket->ignoreSslErrors();
 }
 
-QwwSmtpClient::AuthModes QwwSmtpClient::supportedAuthModes() const{
+QwwSmtpClient::AuthModes QwwSmtpClient::supportedAuthModes() const {
     return d->authModes;
 }
 
-QwwSmtpClient::Options QwwSmtpClient::options() const{
+QwwSmtpClient::Options QwwSmtpClient::options() const {
     return d->options;
 }
 
-QString QwwSmtpClient::errorString() const{
+QString QwwSmtpClient::errorString() const {
     return d->errorString;
 }
 
