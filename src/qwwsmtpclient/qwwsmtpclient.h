@@ -93,11 +93,6 @@ signals:
 
 private:
     QwwSmtpClientPrivate *d;
-    Q_PRIVATE_SLOT(d, void onConnected());
-    Q_PRIVATE_SLOT(d, void onDisconnected());
-    Q_PRIVATE_SLOT(d, void onError(QAbstractSocket::SocketError));
-    Q_PRIVATE_SLOT(d, void _q_readFromSocket());
-    Q_PRIVATE_SLOT(d, void _q_encrypted());
     friend class QwwSmtpClientPrivate;
 
     QwwSmtpClient(const QwwSmtpClient&); // don't implement

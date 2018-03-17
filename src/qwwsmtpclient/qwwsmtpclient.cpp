@@ -579,11 +579,13 @@ QwwSmtpClient::QwwSmtpClient(QObject *parent)
     d->inProgress = false;
     d->localName = "localhost";
     d->socket = new QSslSocket(this);
-    connect(d->socket, SIGNAL(connected()), this, SLOT(onConnected()));
-    connect(d->socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onError(QAbstractSocket::SocketError)) );
-    connect(d->socket, SIGNAL(disconnected()), this, SLOT(onDisconnected()));
-    connect(d->socket, SIGNAL(readyRead()), this, SLOT(_q_readFromSocket()));
-    connect(d->socket, SIGNAL(sslErrors(const QList<QSslError> &)), this, SIGNAL(sslErrors(const QList<QSslError>&)));
+    connect(d->socket, &QSslSocket::connected, [this] { d->onConnected(); });
+    connect(d->socket, static_cast<void (QSslSocket::*)(QAbstractSocket::SocketError)>(&QSslSocket::error), // TODO: use Qt5.7+ qOverload
+            [this] (QAbstractSocket::SocketError socketError) { d->onError(socketError); });
+    connect(d->socket, &QSslSocket::disconnected, [this] { d->onDisconnected(); });
+    connect(d->socket, &QSslSocket::readyRead, [this] { d->_q_readFromSocket(); });
+    connect(d->socket, static_cast<void (QSslSocket::*)(const QList<QSslError> &)>(&QSslSocket::sslErrors), // TODO: use Qt5.7+ qOverload
+            [this] (const QList<QSslError> & errorList) { sslErrors(errorList); });
 }
 
 
@@ -630,7 +632,7 @@ int QwwSmtpClient::disconnectFromHost() {
 }
 
 int QwwSmtpClient::startTls() {
-    connect(d->socket, SIGNAL(encrypted()), this, SLOT(_q_encrypted()), Qt::UniqueConnection);
+    connect(d->socket, &QSslSocket::encrypted, this, [this] { d->_q_encrypted(); }, Qt::UniqueConnection);
     SMTPCommand cmd;
     cmd.type = SMTPCommand::StartTLS;
     cmd.id = ++d->lastId;
