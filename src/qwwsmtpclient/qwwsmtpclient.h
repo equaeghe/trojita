@@ -49,15 +49,27 @@ class QwwSmtpClient : public QObject {
     Q_FLAGS(Options);
     Q_ENUMS(AuthMode);
     Q_FLAGS(AuthModes);
+    Q_ENUMS(BurlFeature);
+    Q_FLAGS(BurlFeatures);
 
 public:
     explicit QwwSmtpClient(QObject *parent = 0);
     ~QwwSmtpClient();
     enum State { Disconnected, Connecting, Connected, TLSRequested, Authenticating, Sending, Disconnecting };
-    enum Option { NoOptions = 0, StartTlsOption, SizeOption, PipeliningOption, EightBitMimeOption, AuthOption };
-    Q_DECLARE_FLAGS ( Options, Option );
+    enum Option { NoOptions = 0,
+                  StartTlsOption /* RFC 3207 */,
+                  AuthOption /* RFC 4954 */,
+                  SizeOption /* RFC 1870 */,
+                  EnhancedStatusCodesOption /* RFC 2034 */, // TODO: should we take this into account for the regexp/when parsing options?
+                  PipeliningOption /* RFC 2920 */,
+                  BurlOption /* RFC 4468 */,
+                  EightBitMimeOption /* RFC 6152 */
+    };
+    Q_DECLARE_FLAGS(Options, Option);
     enum AuthMode { AuthNone = 0, AuthAny = 1, AuthPlain = 2, AuthLogin = 4 };
-    Q_DECLARE_FLAGS ( AuthModes, AuthMode );
+    Q_DECLARE_FLAGS(AuthModes, AuthMode);
+    enum BurlFeature { BurlNone = 0, BurlImap = 1 };
+    Q_DECLARE_FLAGS(BurlFeatures, BurlFeature);
     void setLocalName(const QString &ln);
     void setLocalNameEncrypted(const QString &ln);
 
@@ -69,6 +81,7 @@ public:
     int sendMailBurl(const QByteArray &from, const QList<QByteArray> &to, const QByteArray &url);
     int rawCommand(const QString &cmd);
     AuthModes supportedAuthModes() const;
+    BurlFeatures supportedBurlFeatures() const;
     Options options() const;
     QString errorString() const;
 public slots:

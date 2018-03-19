@@ -97,6 +97,8 @@ public:
     // server caps:
     QwwSmtpClient::Options options;
     QwwSmtpClient::AuthModes authModes;
+    QwwSmtpClient::BurlFeatures burlFeatures;
+    uint size;
 
     QQueue<SMTPCommand> commandqueue;
 private:
@@ -549,14 +551,21 @@ void QwwSmtpClientPrivate::sendAuthLogin(const QString & username, const QString
 void QwwSmtpClientPrivate::parseOption(const QStringList &texts) {
     // map string options to enum values
     static const QMap<QString, QwwSmtpClient::Option> text2option({
-        {QStringLiteral("pipelining"), QwwSmtpClient::PipeliningOption},
         {QStringLiteral("starttls"), QwwSmtpClient::StartTlsOption},
-        {QStringLiteral("8bitmime"), QwwSmtpClient::EightBitMimeOption},
-        {QStringLiteral("auth"), QwwSmtpClient::AuthOption}});
+        {QStringLiteral("auth"), QwwSmtpClient::AuthOption},
+        {QStringLiteral("size"), QwwSmtpClient::SizeOption},
+        {QStringLiteral("enhancedstatuscodes"), QwwSmtpClient::EnhancedStatusCodesOption},
+        {QStringLiteral("pipelining"), QwwSmtpClient::PipeliningOption},
+        {QStringLiteral("burl"), QwwSmtpClient::BurlOption},
+        {QStringLiteral("8bitmime"), QwwSmtpClient::EightBitMimeOption}});
     // map string authmodes to enum values
     static const QMap<QString, QwwSmtpClient::AuthMode> text2authmode({
         {QStringLiteral("plain"), QwwSmtpClient::AuthPlain},
         {QStringLiteral("login"), QwwSmtpClient::AuthLogin}
+    });
+    // map string burlfeatures to enum values
+    static const QMap<QString, QwwSmtpClient::BurlFeature> text2burlfeature({
+        {QStringLiteral("imap"), QwwSmtpClient::BurlImap}
     });
 
     foreach (const QString &text, texts) {
@@ -565,9 +574,22 @@ void QwwSmtpClientPrivate::parseOption(const QStringList &texts) {
             continue;
         QwwSmtpClient::Option option = text2option[textparts.takeFirst()];
         options |= option;
-        if (option == QwwSmtpClient::AuthOption) // parse auth modes
+        switch (option) {
+        case QwwSmtpClient::AuthOption: // parse auth modes
             foreach (const QString &s, textparts)
                 authModes |= text2authmode[s];
+            break;
+        case QwwSmtpClient::SizeOption: // get max size
+            if (textparts.length() != 1) break; // there should only be one argument, bail out
+            size = textparts[0].toInt();
+            break;
+        case QwwSmtpClient::BurlOption: // parse burl features (normally only ‘imap’)
+            foreach (const QString &s, textparts)
+                burlFeatures |= text2burlfeature[s];
+            break;
+        default:
+            break;
+        }
     }
 }
 
@@ -714,6 +736,10 @@ void QwwSmtpClient::ignoreSslErrors() {
 
 QwwSmtpClient::AuthModes QwwSmtpClient::supportedAuthModes() const {
     return d->authModes;
+}
+
+QwwSmtpClient::BurlFeatures QwwSmtpClient::supportedBurlFeatures() const {
+    return d->burlFeatures;
 }
 
 QwwSmtpClient::Options QwwSmtpClient::options() const {
