@@ -166,7 +166,6 @@ char *toString(const NetDataRegexp &x);
     QCOMPARE(QString::fromUtf8(SOCK->writtenStuff()), QString::fromUtf8(data));\
 }
 
-// Be careful with this; although we now use QRegularExpression, the underlying code is still based on QRegExp's limitation to single-line patterns.
 #define cClientRegExp(pattern) \
 { \
     TROJITA_CLIENT_LOOP \

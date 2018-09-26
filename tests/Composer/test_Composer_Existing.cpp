@@ -72,13 +72,10 @@ void ComposerExistingTest::testSimpleCompose()
     buf.open(QIODevice::WriteOnly);
     QCOMPARE(composer.asRawMessage(&buf, &errorMessage), false);
     QVERIFY(data.isEmpty());
-    cClientRegExp(t.mk("UID FETCH 10 \\(BODY\\.PEEK\\["
-                       "("
-                       "TEXT\\] BODY\\.PEEK\\[HEADER"
-                       "|"
-                       "HEADER\\] BODY\\.PEEK\\[TEXT"
-                       ")"
-                       "\\]\\)"));
+    cClientRegExp(t.mk("UID FETCH 10 \\("
+                           "BODY\\.PEEK\\[(?:(TEXT)|HEADER)\\] "
+                           "BODY\\.PEEK\\[(?(1)HEADER|TEXT)\\]"
+                       "\\)\\r\\n"));
     QByteArray headers("Date: Wed, 12 Apr 2017 09:28:35 +0200\r\n\r\n");
     QByteArray body("this is the body!");
     cServer("* 1 FETCH (BODY[TEXT] {" + QByteArray::number(body.size()) + "}\r\n" + body + ")\r\n");
@@ -102,13 +99,10 @@ void ComposerExistingTest::testSimpleNo()
     buf.open(QIODevice::WriteOnly);
     QCOMPARE(composer.asRawMessage(&buf, &errorMessage), false);
     QVERIFY(data.isEmpty());
-    cClientRegExp(t.mk("UID FETCH 10 \\(BODY\\.PEEK\\["
-                       "("
-                       "TEXT\\] BODY\\.PEEK\\[HEADER"
-                       "|"
-                       "HEADER\\] BODY\\.PEEK\\[TEXT"
-                       ")"
-                       "\\]\\)"));
+    cClientRegExp(t.mk("UID FETCH 10 \\("
+                           "BODY\\.PEEK\\[(?:(TEXT)|HEADER)\\] "
+                           "BODY\\.PEEK\\[(?(1)HEADER|TEXT)\\]"
+                       "\\)\\r\\n"));
     cServer(t.last("NO go away\r\n"));
     QCOMPARE(composer.asRawMessage(&buf, &errorMessage), false);
     QCOMPARE(data, QByteArray());

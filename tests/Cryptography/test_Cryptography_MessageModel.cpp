@@ -280,7 +280,7 @@ void CryptographyMessageModelTest::testLocalMimeParsing()
     QCOMPARE(msgRoot.data(Imap::Mailbox::RolePartMimeType).toByteArray(), QByteArrayLiteral("message/rfc822"));
     QCOMPARE(msgRoot.internalPointer(), formerMsgRoot.internalPointer());
     QCOMPARE(msgModel.rowCount(msgRoot), 0);
-    cClientRegExp(t.mk("UID FETCH 333 \\(BODY\\.PEEK\\[1\\.(TEXT|HEADER)\\] BODY\\.PEEK\\[1\\.(TEXT|HEADER)\\]\\)"));
+    cClientRegExp(t.mk("UID FETCH 333 \\((BODY\\.PEEK\\[1\\.(TEXT|HEADER)\\]) (?1)\\)\\r\\n"));
     QByteArray myHeader = QByteArrayLiteral("Content-Type: mULTIpart/miXed; boundary=sep\r\n"
                                             "MIME-Version: 1.0\r\n"
                                             "Subject: =?ISO-8859-2?B?7Lno+L794e3p?=\r\n"

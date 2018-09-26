@@ -776,13 +776,10 @@ void ComposerSubmissionTest::testForwardingNormal()
     QCOMPARE(origMessage.data(Imap::Mailbox::RoleMessageUid).toInt(), 10);
     m_composer->prepareForwarding(origMessage, Composer::ForwardMode::FORWARD_AS_ATTACHMENT);
 
-    cClientRegExp(t.mk("UID FETCH 10 \\(BODY\\.PEEK\\["
-                       "("
-                       "TEXT\\] BODY\\.PEEK\\[HEADER"
-                       "|"
-                       "HEADER\\] BODY\\.PEEK\\[TEXT"
-                       ")"
-                       "\\]\\)"));
+    cClientRegExp(t.mk("UID FETCH 10 \\("
+                           "BODY\\.PEEK\\[(?:(TEXT)|HEADER)\\] "
+                           "BODY\\.PEEK\\[(?(1)HEADER|TEXT)\\]"
+                       "\\)\\r\\n"));
     cServer("* 1 FETCH (BODY[TEXT] \"contents\" BODY[HEADER] \"headers\")\r\n");
     cServer(t.last("OK fetched\r\n"));
     cEmpty();
@@ -818,13 +815,10 @@ void ComposerSubmissionTest::testForwardingDeletedWhileFetching()
     QCOMPARE(origMessage.data(Imap::Mailbox::RoleMessageUid).toInt(), 10);
     m_composer->prepareForwarding(origMessage, Composer::ForwardMode::FORWARD_AS_ATTACHMENT);
 
-    cClientRegExp(t.mk("UID FETCH 10 \\(BODY\\.PEEK\\["
-                       "("
-                       "TEXT\\] BODY\\.PEEK\\[HEADER"
-                       "|"
-                       "HEADER\\] BODY\\.PEEK\\[TEXT"
-                       ")"
-                       "\\]\\)"));
+    cClientRegExp(t.mk("UID FETCH 10 \\("
+                           "BODY\\.PEEK\\[(?:(TEXT)|HEADER)\\] "
+                           "BODY\\.PEEK\\[(?(1)HEADER|TEXT)\\]"
+                       "\\)\\r\\n"));
     cServer("* 1 EXPUNGE\r\n")
     cServer(t.last("NO not fetched, it's gone now\r\n"));
     cEmpty();

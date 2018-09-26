@@ -95,7 +95,10 @@ void CryptographyPGPTest::testDecryption()
     QCOMPARE(msgModel.rowCount(data), 0);
     QCOMPARE(data.data(Imap::Mailbox::RoleIsFetched).toBool(), false);
 
-    cClientRegExp(t.mk("UID FETCH 333 \\((BODY\\.PEEK\\[2\\] BODY\\.PEEK\\[1\\]|BODY.PEEK\\[1\\] BODY\\.PEEK\\[2\\])\\)"));
+    cClientRegExp(t.mk("UID FETCH 333 \\("
+                           "BODY\\.PEEK\\[(?:(1)|2)\\] "
+                           "BODY\\.PEEK\\[((?1)2|1)\\]"
+                       "\\)\\r\\n"));
     cServer("* 1 FETCH (UID 333 BODY[2] " + asLiteral(cyphertext) + " BODY[1] " + asLiteral("Version: 1\r\n") + ")\r\n"
             + t.last("OK fetched"));
 
@@ -212,7 +215,10 @@ void CryptographyPGPTest::testDecryptWithoutEnvelope()
     QCOMPARE(msgModel.rowCount(data), 0);
     QCOMPARE(data.data(Imap::Mailbox::RoleIsFetched).toBool(), false);
 
-    cClientRegExp(t.mk("UID FETCH 333 \\((BODY\\.PEEK\\[2\\] BODY\\.PEEK\\[1\\]|BODY.PEEK\\[1\\] BODY\\.PEEK\\[2\\])\\)"));
+    cClientRegExp(t.mk("UID FETCH 333 \\("
+                           "BODY\\.PEEK\\[(?:(1)|2)\\] "
+                           "BODY\\.PEEK\\[((?1)2|1)\\]"
+                       "\\)\\r\\n"));
     cServer("* 1 FETCH (UID 333 BODY[2] " + asLiteral(encValid) + " BODY[1] " + asLiteral("Version: 1\r\n") + ")\r\n"
             + t.last("OK fetched"));
 
@@ -285,7 +291,7 @@ void CryptographyPGPTest::testVerification()
     QCOMPARE(msgModel.rowCount(data), 0);
     QCOMPARE(data.data(Imap::Mailbox::RoleIsFetched).toBool(), false);
 
-    cClientRegExp(t.mk("UID FETCH 333 \\((BODY\\.PEEK\\[(2|1|1\\.MIME)\\] ?){3}\\)"));
+    cClientRegExp(t.mk("UID FETCH 333 \\((BODY\\.PEEK\\[(2|1|1\\.MIME)\\] ?){3}\\)\\r\\n"));
     cServer("* 1 FETCH (UID 333 BODY[2] " + asLiteral(signature) + " BODY[1] " + asLiteral(plaintext)
             + " BODY[1.MIME] " + asLiteral(ptMimeHdr) + ")\r\n"
             + t.last("OK fetched"));
@@ -565,11 +571,11 @@ void CryptographyPGPTest::testOffline_data()
             "(\"application\" \"pgp-signature\" NIL NIL NIL \"7bit\" 851 NIL NIL NIL NIL)"
             " \"signed\" (\"boundary\" \"=-=-=\" \"micalg\" \"pgp-sha256\" \"protocol\" \"application/pgp-signature\")"
             " NIL NIL NIL")
-            << QByteArray("UID FETCH 333 \\((BODY\\.PEEK\\[(2|1|1\\.MIME)\\] ?){3}\\)");
+            << QByteArray("UID FETCH 333 \\((BODY\\.PEEK\\[(2|1|1\\.MIME)\\] ?){3}\\)\\r\\n");
 
     QTest::newRow("encrypted")
             << bsEncrypted
-            << QByteArray("UID FETCH 333 \\((BODY\\.PEEK\\[(1|2)\\] ?){2}\\)");
+            << QByteArray("UID FETCH 333 \\((BODY\\.PEEK\\[(1|2)\\] ?){2}\\)\\r\\n");
 }
 
 QTEST_GUILESS_MAIN(CryptographyPGPTest)

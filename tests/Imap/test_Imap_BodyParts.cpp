@@ -479,7 +479,7 @@ void BodyPartsTest::testBinaryFallback()
         QCOMPARE(part2.data(RolePartId).toString(), QString("2"));
         QCOMPARE(part2.data(RolePartData).toByteArray(), QByteArray());
         QTest::qWait(15);
-        cClientRegExp(t.mk("UID FETCH 333 \\((BINARY\\.PEEK\\[(2|1)\\] ?){2}\\)"));
+        cClientRegExp(t.mk("UID FETCH 333 \\((BINARY\\.PEEK\\[(2|1)\\] ?){2}\\)\\r\\n"));
         cServer("* 1 FETCH (UID 333 BINARY[2] \"ahoj\")\r\n");
         cServer(t.last("OK [UNKNOWN-CTE] some items failed to fetch\r\n"));
         QCOMPARE(dataChangedSpy.size(), 1);

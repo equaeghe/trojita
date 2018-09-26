@@ -767,33 +767,12 @@ NetDataRegexp::NetDataRegexp(const QByteArray &raw, const QByteArray &pattern, c
 }
 
 bool operator==(const NetDataRegexp &a, const NetDataRegexp &b)
-// This used to be a QRegExp based function and it still assumes QRegExp's limitations, even though these are removed by QRegularExpression
-// TODO: Using QRegularExpression's functionality, multiline patterns and raw data can be accomodated;
-// this may simplify some code (all the ifs below here could be removed, for starters), but this will require checking all patterns
 {
     Q_ASSERT(!a.isPattern);
     Q_ASSERT(b.isPattern);
-    QByteArray rawData = a.raw;
 
-    // QRegExp didn't support multiline patterns
-    if (!rawData.endsWith("\r\n")) {
-        // just a partial line
-        return false;
-    }
-    rawData.chop(2);
-    if (rawData.contains("\r\n")) {
-        // multiple lines, we definitely couldn't handle that
-        return false;
-    }
-
-    // ...but it would've been a developer's mistake if the *pattern* included
-    if (b.pattern.contains("\r\n")) {
-        // that's a developer's error -- multiline patterns were not support by Qt's QRegExp, and there was nothing else in Qt4
-        Q_ASSERT(!"CRLF in the regexp pattern, fix the test suite");
-        return false;
-    }
-
-    return QRegularExpression("\\A(?:" + QString::fromUtf8(b.pattern) + ")\\z").match(QString::fromUtf8(rawData)).hasMatch();
+    return QRegularExpression("\\A(?:" + QString::fromUtf8(b.pattern) + ")\\z",
+                              QRegularExpression::MultilineOption).match(QString::fromUtf8(a.raw)).hasMatch();
     // The pattern is surrounded by start and end anchors to ensure that the match is exact
 }
 

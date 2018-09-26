@@ -35,7 +35,7 @@ using namespace Imap::Mailbox;
 void ImapParserWriteTest::testNoLiteralPlus()
 {
     model->appendIntoMailbox(QStringLiteral("a"), plaintext10, QStringList(), QDateTime::currentDateTime());
-    cClientRegExp(t.mk(APPEND_PREFIX) + "\\{" + QByteArray::number(plaintext10.size()) + "\\}");
+    cClientRegExp(t.mk(APPEND_PREFIX) + "\\{" + QByteArray::number(plaintext10.size()) + "\\}\\r\\n");
     cServer("+ OK send your literal\r\n");
     cClient(plaintext10 + "\r\n");
     cServer(t.last("OK stored\r\n"));
@@ -74,7 +74,7 @@ void ImapParserWriteTest::testLiteralMinus()
     cEmpty();
 
     model->appendIntoMailbox(QStringLiteral("a"), plaintext4097, QStringList(), QDateTime::currentDateTime());
-    cClientRegExp(t.mk(APPEND_PREFIX) + "\\{" + QByteArray::number(plaintext4097.size()) + "\\}");
+    cClientRegExp(t.mk(APPEND_PREFIX) + "\\{" + QByteArray::number(plaintext4097.size()) + "\\}\\r\\n");
     cServer("+ OK send your literal\r\n");
     cClient(plaintext4097 + "\r\n");
     cServer(t.last("OK stored\r\n"));
