@@ -90,11 +90,11 @@ Envelope Envelope::fromList(const QVariantList &items, const QByteArray &line, c
 
     if (items[8].type() != QVariant::ByteArray)
         throw UnexpectedHere("Envelope::fromList: inReplyTo not a QByteArray", line, start);
-    QByteArray inReplyTo = items[8].toByteArray();
+    QByteArray inReplyTo = Imap::decodeRFC2047String(items[8].toByteArray()).toUtf8();
 
     if (items[9].type() != QVariant::ByteArray)
         throw UnexpectedHere("Envelope::fromList: messageId not a QByteArray", line, start);
-    QByteArray messageId = items[9].toByteArray();
+    QByteArray messageId = Imap::decodeRFC2047String(items[9].toByteArray()).toUtf8();
 
     QByteArray buf;
     if (!messageId.isEmpty())
