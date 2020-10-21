@@ -192,6 +192,14 @@ void HtmlFormattingTest::testPlainTextFormattingViaHtml_data()
             << QStringLiteral("ble.smrt-1_2+3@example.org")
             << QStringLiteral("<a href=\"mailto:ble.smrt-1_2+3@example.org\">ble.smrt-1_2+3@example.org</a>");
 
+    QTest::newRow("mailto-before-period")
+            << QStringLiteral("test@example.org.")
+            << QStringLiteral("<a href=\"mailto:test@example.org\">test@example.org</a>.");
+            
+    QTest::newRow("markdown-style-link")
+            << QStringLiteral("[http://example.org][1]")
+            << QStringLiteral("[<a href=\"http://example.org\">http://example.org</a>][1]");
+            
     QTest::newRow("multiple-links-on-line")
             << QStringLiteral("Hi,\n"
                               "http://meh/ http://pwn/now foo@bar http://wtf\n"
