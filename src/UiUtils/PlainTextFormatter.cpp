@@ -75,7 +75,7 @@ QString helperHtmlifySingleLine(QString line)
                         "(?<=^|[[({\\s])" // markup group surroundings
                             "(" // 3: markup group
                                 "([*/_])(?!\\4)" // 4: markup character, not repeated
-                                    "(\\S+?)" // 5: marked-up text
+                                    "(\\V+?)" // 5: marked-up text
                                 "\\4(?!\\4)" // markup character, not repeated
                           ")" // end of markup group
                         "(?=$|[])}\\s,;.])" // markup group surroundings
