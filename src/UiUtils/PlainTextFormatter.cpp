@@ -47,19 +47,29 @@ This function recognizes http and https links, e-mail addresses, *bold*, /italic
 */
 QString helperHtmlifySingleLine(QString line)
 {
+    static const QString unreserved = QLatin1String("[\\w~.-]");
+    static const QString pct_encoded = QLatin1String("%[\\da-fA-F]{2}");
+    static const QString sub_delims = QStringLiteral("[!$'()*+,;=]|&amp;");
+    static const QString rchar =
+        unreserved + QStringLiteral("|") + pct_encoded + QStringLiteral("|") + sub_delims;
+    static const QString spchar = rchar + QStringLiteral("|/|:|@");
     // Static regexps for the engine construction.
     // Warning, these operate on the *escaped* HTML!
     static const QRegularExpression patternRe(QLatin1String(
                         "(" // 1: hyperlink
                             "https?://" // scheme prefix
-                            "(?:[][;/?:@=$_.+!',0-9a-zA-Z%#~()*-]|&amp;)+" // allowed characters
-                            "(?:[/@=$_+'0-9a-zA-Z%#~-]|&amp;)" // termination
+                            "(?:(?:%1|:)*@)?" // userinfo
+                            "(?:(?:\\d{1,3}.){3}\\d{1,3}|\\[[\\d:]*\\]|(?:%1)+)" // host
+                            "(?::\\d+)?" // port
+                            "(?:/(?:%2)*)?" // path
+                            "(?:[?#](?:%2|\\?)*){0,2}" // query, fragment
+                            "(?<![,:;.!?)])" // do not include phrase endings
                         ")" // end of hyperlink
                         "|"
                         "(" // 2: e-mail
-                            "(?:[a-zA-Z0-9_.!#$%'*+/=?^`{|}~-]|&amp;)+"
+                            "(?:[\\w.!#$%'*+/=?^`{|}~-]|&amp;)+"
                             "@"
-                            "[a-zA-Z0-9._-]+"
+                            "[\\w.-]+(?<![_.-])"
                         ")" // end of e-mail
                         "|"
                         "(?<=^|[[({\\s])" // markup group surroundings
@@ -69,7 +79,7 @@ QString helperHtmlifySingleLine(QString line)
                                 "\\4(?!\\4)" // markup character, not repeated
                           ")" // end of markup group
                         "(?=$|[])}\\s,;.])" // markup group surroundings
-                    ), QRegularExpression::CaseInsensitiveOption);
+                    ).arg(rchar, spchar), QRegularExpression::CaseInsensitiveOption);
 
     // Escape the HTML entities
     line = line.toHtmlEscaped();
