@@ -45,7 +45,7 @@ namespace UiUtils {
 
 This function recognizes http and https links, e-mail addresses, *bold*, /italic/ and _underline_ text.
 */
-QString helperHtmlifySingleLine(QString line)
+QString helperHtmlifySingleLine(QString line, bool escaped = false)
 {
     static const QString unreserved = QLatin1String("[\\w~.-]");
     static const QString pct_encoded = QLatin1String("%[\\da-fA-F]{2}");
@@ -82,7 +82,7 @@ QString helperHtmlifySingleLine(QString line)
                     ).arg(rchar, spchar), QRegularExpression::CaseInsensitiveOption);
 
     // Escape the HTML entities
-    line = line.toHtmlEscaped();
+    if (!escaped) line = line.toHtmlEscaped();
 
     static const QMap<QString, QChar> markupletter({{QStringLiteral("*"), QLatin1Char('b')},
                                                     {QStringLiteral("/"), QLatin1Char('i')},
@@ -112,7 +112,7 @@ QString helperHtmlifySingleLine(QString line)
                          QStringLiteral("<%1>%2%3%2</%1>")
                             .arg(markupletter[match.captured(4)],
                                  QStringLiteral("<span class=\"markup\">%1</span>").arg(match.captured(4)),
-                                 helperHtmlifySingleLine(match.captured(5))));
+                                 helperHtmlifySingleLine(match.captured(5), true)));
             break;
         }
         growth = line.length() - orig_length;
